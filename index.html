@@ -231,16 +231,17 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
 })();
 
 /* ============ ボール／キャラ／マーカー ============ */
-const ball = new THREE.Mesh(new THREE.SphereGeometry(0.24, 18, 14),
+const BALL_R = 0.09;   // ボール半径（2026-11-21 ユーザー指摘で 0.24 → 0.09 に小型化）
+const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 18, 14),
   new THREE.MeshPhongMaterial({ color:0xffffff, shininess:60 }));
-ball.position.set(0, 0.24, 0); scene.add(ball);
+ball.position.set(0, BALL_R, 0); scene.add(ball);
 function blobShadow(r, opacity){
   const s = new THREE.Mesh(new THREE.CircleGeometry(r, 20),
     new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity }));
   s.rotation.x = -Math.PI/2; s.position.y = 0.03; scene.add(s); return s;
 }
-const ballShadow = blobShadow(0.42, 0.3);
-const marker = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 32),
+const ballShadow = blobShadow(0.17, 0.3);
+const marker = new THREE.Mesh(new THREE.RingGeometry(0.30, 0.46, 32),
   new THREE.MeshBasicMaterial({ color:0xfff176, transparent:true, opacity:0.9, side:THREE.DoubleSide }));
 marker.rotation.x = -Math.PI/2; marker.position.y = 0.05; scene.add(marker);
 // 飛行中の目印（マップ状態でも見える光）
@@ -259,7 +260,7 @@ const TRAIL_MAX = 240;
 const trailPos = new Float32Array(TRAIL_MAX * 3);
 const trailGeo = new THREE.BufferGeometry();
 trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3));
-const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.75 }));
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.6 }));
 trail.visible = false; scene.add(trail);
 let trailN = 0;
 function trailReset(){ trailN = 0; trail.visible = true; trailGeo.setDrawRange(0, 0); }
@@ -268,7 +269,7 @@ function trailPush(p){
   trailPos[trailN*3] = p.x; trailPos[trailN*3+1] = p.y; trailPos[trailN*3+2] = p.z;
   trailN++; trailGeo.setDrawRange(0, trailN); trailGeo.attributes.position.needsUpdate = true;
 }
-// キャラ（Canvas簡易スプライト：青チュニック＋赤マント＋茶髪）
+// キャラ（フォールバック用のCanvas簡易スプライト：青チュニック＋赤マント＋茶髪。通常は golfer.png を使用）
 const charTex = (function(){
   const c = document.createElement("canvas"); c.width = 96; c.height = 144;
   const x = c.getContext("2d");
@@ -287,6 +288,14 @@ const charTex = (function(){
 })();
 const chara = new THREE.Sprite(new THREE.SpriteMaterial({ map:charTex, transparent:true }));
 chara.scale.set(0.62, 0.93, 1); scene.add(chara);
+// ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
+new THREE.TextureLoader().load("golfer.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
+  chara.material.map = tex;
+  chara.material.needsUpdate = true;
+  const h = 0.93, w = h * tex.image.width / tex.image.height;   // 高さは従来どおり小さく、幅は絵の縦横比で
+  chara.scale.set(w, h, 1);
+}, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 const charShadow = blobShadow(0.4, 0.28);
 // 方向ガイド矢印
 let arrow = null;
@@ -296,7 +305,7 @@ function updateArrow(){
   const dir = aimVector(aimOffset);
   const len = Math.max(3, Math.min(effDist(), distToCup()) * 0.4);
   const head = Math.min(2.2, len * 0.35);
-  arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(ball.position.x, 0.25, ball.position.z),
+  arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(ball.position.x, BALL_R, ball.position.z),
     len, 0xffeb3b, head, head * 0.55);
   scene.add(arrow);
 }
@@ -490,14 +499,14 @@ function fire(p){
   }
 }
 function startRoll(){
-  ball.position.y = 0.24;
+  ball.position.y = BALL_R;
   if (inLake(ball.position.x, ball.position.z)) return water();
   if (shot.rollDist <= 0.05) return finishShot();
   shot.rollV = Math.sqrt(2 * ROLL_A * shot.rollDist);
   state = "roll";
 }
 function finishShot(){
-  ball.position.y = 0.24;
+  ball.position.y = BALL_R;
   glow.visible = false; trail.visible = false;
   if (distToCup() < 0.55) return holed();
   state = "aim";
@@ -509,7 +518,7 @@ function water(){
   splashSound();
   strokes++; strokesEl.textContent = strokes;
   showMsg("池ポチャ… 1罰で前の位置から打ち直し", 2400);
-  ball.position.copy(prevBallPos); ball.position.y = 0.24;
+  ball.position.copy(prevBallPos); ball.position.y = BALL_R;
   glow.visible = false; trail.visible = false;
   state = "aim";
   aimOffset = 0; knob.style.transform = "translate(0px,0)";
@@ -519,7 +528,7 @@ function water(){
 function holed(){
   state = "done";
   glow.visible = false; trail.visible = false; marker.visible = false;
-  ball.position.set(CUP.x, 0.12, CUP.z);
+  ball.position.set(CUP.x, 0.04, CUP.z);
   cupSound();
   const d = strokes - PAR;
   const label = d <= -2 ? "イーグル！" : d === -1 ? "バーディー！" : d === 0 ? "パー" : d === 1 ? "ボギー" : "+" + d;
@@ -529,7 +538,7 @@ function holed(){
 }
 document.getElementById("againBtn").addEventListener("click", () => {
   document.getElementById("result").style.display = "none";
-  ball.position.set(0, 0.24, 0);
+  ball.position.set(0, BALL_R, 0);
   strokes = 0; strokesEl.textContent = 0;
   state = "aim"; aimOffset = 0; knob.style.transform = "translate(0px,0)";
   selectClub(0); placeChar(); marker.visible = true; updateArrow(); snapCam = true;
@@ -570,11 +579,11 @@ function animate(){
     shot.t += dt;
     shot.vel.y -= GRAV * dt;
     ball.position.addScaledVector(shot.vel, dt);
-    if (ball.position.y < 0.24) ball.position.y = 0.24;
+    if (ball.position.y < BALL_R) ball.position.y = BALL_R;
     trailPush(ball.position); glow.position.copy(ball.position);
     const dx = ball.position.x - shot.origin.x, dz = ball.position.z - shot.origin.z;
     const traveled = Math.hypot(dx, dz);
-    if (traveled >= shot.carryDist || (ball.position.y <= 0.24 && shot.vel.y < 0)) startRoll();
+    if (traveled >= shot.carryDist || (ball.position.y <= BALL_R && shot.vel.y < 0)) startRoll();
   } else if (state === "roll" && shot){
     shot.t += dt;
     const a = shot.putt ? PUTT_A : ROLL_A;
@@ -582,7 +591,7 @@ function animate(){
     if (shot.rollV <= 0){ shot.rollV = 0; finishShot(); }
     else {
       ball.position.addScaledVector(shot.dir, shot.rollV * dt);
-      ball.position.y = shot.putt ? 0.24 : 0.24 + Math.max(0, Math.sin(shot.t * 26)) * 0.1 * Math.max(0, Math.min(1, (shot.rollV - 12) / 30));
+      ball.position.y = shot.putt ? BALL_R : BALL_R + Math.max(0, Math.sin(shot.t * 26)) * 0.04 * Math.max(0, Math.min(1, (shot.rollV - 12) / 30));
       trailPush(ball.position); glow.position.copy(ball.position);
       const d = distToCup();
       if (d < 0.55 && shot.rollV < 8) holed();
@@ -590,7 +599,7 @@ function animate(){
     }
   }
   // ボール影・マーカー
-  if (glow.visible && shot) { const gs = (!shot.putt && shot.t >= 1.0) ? 7 : 1.7; glow.scale.set(gs, gs, 1); }
+  if (glow.visible && shot) { const gs = (!shot.putt && shot.t >= 1.0) ? 5 : 0.9; glow.scale.set(gs, gs, 1); }
   ballShadow.position.set(ball.position.x, 0.03, ball.position.z);
   marker.position.set(ball.position.x, 0.05, ball.position.z);
   const pulse = 1 + Math.sin(now * 0.006) * 0.18;
@@ -646,7 +655,7 @@ window.__golf = {
   press: () => pressStart(),
   release: () => releaseShot(),
   fireAt: p => { if (state === "aim"){ pressStart(); fire(p); } },
-  place: (x, z) => { if (state === "aim"){ ball.position.set(x, 0.24, z); placeChar(); updateArrow(); snapCam = true; } }
+  place: (x, z) => { if (state === "aim"){ ball.position.set(x, BALL_R, z); placeChar(); updateArrow(); snapCam = true; } }
 };
 </script>
 </body>
