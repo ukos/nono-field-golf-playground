@@ -287,16 +287,16 @@ const charTex = (function(){
   return new THREE.CanvasTexture(c);
 })();
 const chara = new THREE.Sprite(new THREE.SpriteMaterial({ map:charTex, transparent:true }));
-chara.scale.set(0.62, 0.93, 1); scene.add(chara);
+chara.scale.set(0.93, 1.395, 1); scene.add(chara);   // キャラ表示は従来の1.5倍（2026-11-21 ユーザー指示）
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
 new THREE.TextureLoader().load("golfer.png", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   chara.material.map = tex;
   chara.material.needsUpdate = true;
-  const h = 0.93, w = h * tex.image.width / tex.image.height;   // 高さは従来どおり小さく、幅は絵の縦横比で
+  const h = 1.395, w = h * tex.image.width / tex.image.height;   // 高さは従来（0.93）の1.5倍、幅は絵の縦横比で
   chara.scale.set(w, h, 1);
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
-const charShadow = blobShadow(0.4, 0.28);
+const charShadow = blobShadow(0.6, 0.42);
 // 方向ガイド矢印
 let arrow = null;
 function updateArrow(){
@@ -549,7 +549,7 @@ function placeChar(){
   const L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
   const lx = uz, lz = -ux;   // 進行方向の左
   chara.visible = true; charShadow.visible = true;
-  chara.position.set(ball.position.x + lx * 0.62, 0.48, ball.position.z + lz * 0.62);
+  chara.position.set(ball.position.x + lx * 0.62, 0.70, ball.position.z + lz * 0.62);
   charShadow.position.set(chara.position.x, 0.03, chara.position.z);
 }
 function suggestClub(){
