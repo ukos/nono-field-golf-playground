@@ -218,16 +218,21 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
   roof.position.y = 2.35; roof.rotation.y = Math.PI/4; shrine.add(roof);
   shrine.position.set(0, 0, CUP.z - 13.5); scene.add(shrine);
 })();
-// カップ＆旗
+// カップ＆旗（2026-11-21 ユーザー指示で全体を従来の1/5に縮小。旗はロゴ入り絵 flag.png）
 (function(){
-  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.55, 20), new THREE.MeshBasicMaterial({ color:0x10240f }));
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.11, 20), new THREE.MeshBasicMaterial({ color:0x10240f }));
   hole.rotation.x = -Math.PI/2; hole.position.set(CUP.x, 0.045, CUP.z); scene.add(hole);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.4, 6),
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.68, 6),
     new THREE.MeshLambertMaterial({ color:0xf5f5f5 }));
-  pole.position.set(CUP.x, 1.7, CUP.z); scene.add(pole);
-  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.0),
-    new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide }));
-  flag.position.set(CUP.x+0.87, 2.85, CUP.z); scene.add(flag);
+  pole.position.set(CUP.x, 0.34, CUP.z); scene.add(pole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.167),
+    new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
+  flag.position.set(CUP.x+0.17, 0.575, CUP.z); scene.add(flag);
+  // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
+  new THREE.TextureLoader().load("flag.png", (tex) => {
+    flag.material.map = tex; flag.material.color.set(0xffffff);
+    flag.material.needsUpdate = true;
+  }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
 })();
 
 /* ============ ボール／キャラ／マーカー ============ */
@@ -508,7 +513,7 @@ function startRoll(){
 function finishShot(){
   ball.position.y = BALL_R;
   glow.visible = false; trail.visible = false;
-  if (distToCup() < 0.55) return holed();
+  if (distToCup() < 0.2) return holed();   // カップイン判定（見た目0.11より少し甘め）
   state = "aim";
   aimOffset = 0; knob.style.transform = "translate(0px,0)";
   placeChar(); marker.visible = true;
@@ -594,7 +599,7 @@ function animate(){
       ball.position.y = shot.putt ? BALL_R : BALL_R + Math.max(0, Math.sin(shot.t * 26)) * 0.04 * Math.max(0, Math.min(1, (shot.rollV - 12) / 30));
       trailPush(ball.position); glow.position.copy(ball.position);
       const d = distToCup();
-      if (d < 0.55 && shot.rollV < 8) holed();
+      if (d < 0.2 && shot.rollV < 8) holed();
       else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
     }
   }
