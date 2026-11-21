@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>HD-2D フィールドゴルフ 試作（テストホール）</title>
 <link rel="icon" href="data:,">
 <style>
@@ -53,6 +53,22 @@
   #result button { margin-top:16px; padding:10px 26px; font-size:16px; font-weight:700; border:none; border-radius:9px; background:#2e9e57; color:#fff; cursor:pointer; }
 
   #hint { position:fixed; bottom:6px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
+
+  /* 横向き（ランドスケープ）対応：低い画面でも UI が収まるように圧縮 */
+  @media (orientation: landscape) and (max-height: 540px) {
+    #clubList { max-height:94vh; width:92px; }
+    #clubList .ttl { font-size:10px; padding:1px 0 2px; }
+    .club { padding:2px 6px; margin:1px 0; font-size:12px; }
+    .club .d { font-size:10px; }
+    #shotBtn { width:80px; height:80px; font-size:16px; right:16px; bottom:16px; }
+    #stick { width:92px; height:92px; left:16px; bottom:16px; }
+    #knob { width:42px; height:42px; margin:-21px 0 0 -21px; }
+    #gaugeWrap { width:40vw; }
+    #topbar .hole { font-size:13px; }
+    #topbar .sub { font-size:11px; }
+    #topbar .sub b { font-size:12px; }
+    #hint { display:none; }
+  }
 </style>
 </head>
 <body>
@@ -109,13 +125,14 @@ const LAKE = { x0:30, x1:98, z0:-272, z1:-118 };   // 右側の湖
 const GRAV = 13, ROLL_A = 65, PUTT_A = 12;
 
 /* ============ 状態 ============ */
-let state = "aim";           // aim | hold | fly | roll | done
+let state = "aim";           // aim | hold | swing | fly | roll | done
 let clubIdx = 0;
 let strokes = 0;
 let aimOffset = 0;           // ラジアン（スティック）
 let lockedAim = 0;
 let holdStart = 0, needlePos = 0.5;
 let shot = null;             // 飛行中データ
+let swingTimer = 0, pendingP = null;   // スイング動作（swing 状態）の残り時間と保留したゲージ位置
 let prevBallPos = new THREE.Vector3(0, 0, 0);
 let msgTimer = null;
 
@@ -222,12 +239,12 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
 (function(){
   const hole = new THREE.Mesh(new THREE.CircleGeometry(0.11, 20), new THREE.MeshBasicMaterial({ color:0x10240f }));
   hole.rotation.x = -Math.PI/2; hole.position.set(CUP.x, 0.045, CUP.z); scene.add(hole);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.68, 6),
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.395, 6),
     new THREE.MeshLambertMaterial({ color:0xf5f5f5 }));
-  pole.position.set(CUP.x, 0.34, CUP.z); scene.add(pole);
-  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.167),
+  pole.position.set(CUP.x, 0.6975, CUP.z); scene.add(pole);   // ポールの高さは nono の背丈（1.395m）と同じ
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
-  flag.position.set(CUP.x+0.17, 0.575, CUP.z); scene.add(flag);
+  flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
   new THREE.TextureLoader().load("flag.png", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
@@ -266,7 +283,8 @@ const trailPos = new Float32Array(TRAIL_MAX * 3);
 const trailGeo = new THREE.BufferGeometry();
 trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3));
 const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.6 }));
-trail.visible = false; scene.add(trail);
+trail.visible = false; trail.frustumCulled = false;   // 頂点を毎フレーム書き換えるため、初期位置（原点）基準のカリングで消えないようにする
+scene.add(trail);
 let trailN = 0;
 function trailReset(){ trailN = 0; trail.visible = true; trailGeo.setDrawRange(0, 0); }
 function trailPush(p){
@@ -293,14 +311,30 @@ const charTex = (function(){
 })();
 const chara = new THREE.Sprite(new THREE.SpriteMaterial({ map:charTex, transparent:true }));
 chara.scale.set(0.93, 1.395, 1); scene.add(chara);   // キャラ表示は従来の1.5倍（2026-11-21 ユーザー指示）
+/* キャラ絵の差し替え管理：表示高さ 1.395m を維持し、幅は各絵の縦横比で再計算する。
+   スイング絵（swing_back.png／swing_follow.png）が読めなければ、その間は立ち絵のまま（フォールバック）。 */
+const CHAR_H = 1.395;
+let texStand = charTex, texBack = null, texFollow = null;
+function setCharaTex(tex){
+  if (!tex) return;
+  chara.material.map = tex;
+  chara.material.needsUpdate = true;
+  const w = CHAR_H * tex.image.width / tex.image.height;
+  chara.scale.set(w, CHAR_H, 1);
+}
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
 new THREE.TextureLoader().load("golfer.png", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
-  chara.material.map = tex;
-  chara.material.needsUpdate = true;
-  const h = 1.395, w = h * tex.image.width / tex.image.height;   // 高さは従来（0.93）の1.5倍、幅は絵の縦横比で
-  chara.scale.set(w, h, 1);
+  texStand = tex;
+  if (state === "aim" || state === "hold") setCharaTex(texStand);
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
+// スイング絵（振りかぶり／フォロースルー）
+new THREE.TextureLoader().load("swing_back.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texBack = tex;
+}, undefined, () => { /* 読み込み失敗：振りかぶりは立ち絵のまま */ });
+new THREE.TextureLoader().load("swing_follow.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texFollow = tex;
+}, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
 // 方向ガイド矢印
 let arrow = null;
@@ -326,6 +360,7 @@ function aimVector(off){
   const a = -off, c = Math.cos(a), s = Math.sin(a);
   return new THREE.Vector3(bx * c + bz * s, 0, bz * c - bx * s).normalize();
 }
+function flightK(t){ const k = Math.min(Math.max(t / 1.5, 0), 1); return k * k * (3 - 2 * k); }   // 飛行カメラの進行度（0〜1.5秒で smoothstep）
 function effDist(){
   const c = CLUBS[clubIdx];
   if (c.name === "PT") return Math.min(distToCup(), 60);
@@ -366,19 +401,21 @@ selectClub(0);
 /* スティック */
 const stick = document.getElementById("stick"), knob = document.getElementById("knob");
 let stickDrag = null;
+function stickMax(){ return stick.getBoundingClientRect().width / 2 * 0.72; }   // 横向きでスティックが小さくなっても効くよう実寸から決める
 function stickSet(dx){
-  const cl = Math.max(-42, Math.min(42, dx));
+  const max = stickMax();
+  const cl = Math.max(-max, Math.min(max, dx));
   knob.style.transform = "translate(" + cl + "px,0)";
-  aimOffset = (cl / 42) * 0.6;    // ±約34°
+  aimOffset = (cl / max) * 0.6;    // ±約34°
   updateArrow();
 }
-stick.addEventListener("pointerdown", e => { stickDrag = true; stick.setPointerCapture(e.pointerId); stickSet(e.clientX - stick.getBoundingClientRect().left - 59); });
-stick.addEventListener("pointermove", e => { if (stickDrag) stickSet(e.clientX - stick.getBoundingClientRect().left - 59); });
+stick.addEventListener("pointerdown", e => { stickDrag = true; stick.setPointerCapture(e.pointerId); const r = stick.getBoundingClientRect(); stickSet(e.clientX - r.left - r.width / 2); });
+stick.addEventListener("pointermove", e => { if (stickDrag) { const r = stick.getBoundingClientRect(); stickSet(e.clientX - r.left - r.width / 2); } });
 stick.addEventListener("pointerup", () => { stickDrag = null; });
 stick.addEventListener("pointercancel", () => { stickDrag = null; });
 window.addEventListener("keydown", e => {
-  if (e.key === "ArrowLeft")  { aimOffset = Math.max(-0.6, aimOffset - 0.05); knob.style.transform = "translate(" + (aimOffset/0.6*42) + "px,0)"; updateArrow(); }
-  if (e.key === "ArrowRight") { aimOffset = Math.min( 0.6, aimOffset + 0.05); knob.style.transform = "translate(" + (aimOffset/0.6*42) + "px,0)"; updateArrow(); }
+  if (e.key === "ArrowLeft")  { aimOffset = Math.max(-0.6, aimOffset - 0.05); knob.style.transform = "translate(" + (aimOffset/0.6*stickMax()) + "px,0)"; updateArrow(); }
+  if (e.key === "ArrowRight") { aimOffset = Math.min( 0.6, aimOffset + 0.05); knob.style.transform = "translate(" + (aimOffset/0.6*stickMax()) + "px,0)"; updateArrow(); }
   if (e.key === " " && state === "aim") { e.preventDefault(); pressStart(); }
 });
 window.addEventListener("keyup", e => { if (e.key === " " && state === "hold") releaseShot(); });
@@ -458,7 +495,17 @@ function pressStart(){
   shotBtn.classList.add("hold");
   if (arrow) arrow.visible = true;
 }
-function releaseShot(){ if (state === "hold") fire(needlePos); }
+function releaseShot(){
+  if (state !== "hold") return;
+  // 発射は保留し、先にスイング動作（振りかぶり）を挟む。時間が来たら animate 側で fire(pendingP)。
+  pendingP = needlePos;
+  needle.style.display = "none";
+  shotBtn.classList.remove("hold");
+  if (arrow) arrow.visible = false;
+  setCharaTex(texBack);   // 振りかぶり絵（読めていなければ立ち絵のまま）
+  swingTimer = CLUBS[clubIdx].name === "PT" ? 0.12 : 0.22;
+  state = "swing";
+}
 shotBtn.addEventListener("pointerdown", e => { e.preventDefault(); pressStart(); });
 shotBtn.addEventListener("pointerup", e => { e.preventDefault(); releaseShot(); });
 shotBtn.addEventListener("pointercancel", () => releaseShot());
@@ -485,7 +532,7 @@ function fire(p){
   showMsg(best ? "ベストショット！" : (dN > 0.66 ? "大きく外れた…" : "少し外れた"), 1800);
   trailReset(); glow.visible = true; marker.visible = false;
   if (arrow) arrow.visible = false;
-  chara.visible = false; charShadow.visible = false;
+  setCharaTex(texFollow);   // フォロースルー絵に差し替え、キャラは表示したまま（飛行が進んだら t>1.2 で隠す）
   shot = { dir, t:0, putt:isPutt, vel:null, rollV:0, rollDist:0, origin:ball.position.clone() };
   if (isPutt){
     const D = Math.min(distToCup(), 60) * mult;
@@ -550,6 +597,7 @@ document.getElementById("againBtn").addEventListener("click", () => {
   showMsg("", 0);
 });
 function placeChar(){
+  setCharaTex(texStand);   // 立ち絵に戻す
   const dx = CUP.x - ball.position.x, dz = CUP.z - ball.position.z;
   const L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
   const lx = uz, lz = -ux;   // 進行方向の左
@@ -579,6 +627,11 @@ function animate(){
     needlePos = ph < 1 ? ph : 2 - ph;
     needle.style.left = (needlePos * 100) + "%";
   }
+  // スイング動作：時間が来たら保留した発射を実行
+  if (state === "swing"){
+    swingTimer -= dt;
+    if (swingTimer <= 0){ const p = pendingP; pendingP = null; fire(p); }
+  }
   // 物理
   if (state === "fly" && shot){
     shot.t += dt;
@@ -603,15 +656,23 @@ function animate(){
       else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
     }
   }
+  // フォロースルー表示は、飛行が進んだら（t>1.2）従来どおりキャラと影を隠す
+  if (shot && (state === "fly" || state === "roll") && shot.t > 1.2 && chara.visible){
+    chara.visible = false; charShadow.visible = false;
+  }
   // ボール影・マーカー
-  if (glow.visible && shot) { const gs = (!shot.putt && shot.t >= 1.0) ? 5 : 0.9; glow.scale.set(gs, gs, 1); }
+  if (glow.visible && shot) {
+    // 光点もカメラ進行度 k に連動させて連続変化させる（段差なし）。パターは小さいまま
+    const gs = shot.putt ? 0.9 : 0.9 + 4.1 * flightK(shot.t);
+    glow.scale.set(gs, gs, 1);
+  }
   ballShadow.position.set(ball.position.x, 0.03, ball.position.z);
   marker.position.set(ball.position.x, 0.05, ball.position.z);
   const pulse = 1 + Math.sin(now * 0.006) * 0.18;
   marker.scale.set(pulse, pulse, 1);
   // カメラ
   let camPos, camLook;
-  if (state === "aim" || state === "hold"){
+  if (state === "aim" || state === "hold" || state === "swing"){
     const dir = aimVector(aimOffset);
     camPos = new THREE.Vector3(ball.position.x - dir.x * 6.5, 3.1, ball.position.z - dir.z * 6.5);
     camLook = new THREE.Vector3(ball.position.x + dir.x * 11, 0.5, ball.position.z + dir.z * 11);
@@ -623,30 +684,34 @@ function animate(){
       camPos = new THREE.Vector3(ball.position.x - shot.dir.x * 6, 3.0, ball.position.z - shot.dir.z * 6);
       camLook = new THREE.Vector3(ball.position.x + shot.dir.x * 6, 0.3, ball.position.z + shot.dir.z * 6);
       camera.position.lerp(camPos, 0.25); lookCur.lerp(camLook, 0.3);
-    } else if (shot.t < 1.0){
-      // 第1段：ボール寄り、両サイドの3Dオブジェクトの間を飛ぶ
-      camPos = new THREE.Vector3(ball.position.x - shot.dir.x * 5.5, ball.position.y + 2.1, ball.position.z - shot.dir.z * 5.5);
-      camLook = new THREE.Vector3(ball.position.x + shot.dir.x * 7, ball.position.y + 0.4, ball.position.z + shot.dir.z * 7);
-      camera.position.lerp(camPos, 0.55); lookCur.lerp(camLook, 0.6);
     } else {
-      // 第2段：マップ状態（ホール全体の引き視点）
-      camPos = new THREE.Vector3(0, 290, 90);
-      camLook = new THREE.Vector3(0, 0, -178);
-      camera.position.lerp(camPos, 0.07); lookCur.lerp(camLook, 0.1);
+      // 一続きのカメラ（切替なし）：サイドビュー（k=0）→ 斜め上からの俯瞰（k=1）へ連続移行し、ボールを追い続ける
+      const k = flightK(shot.t);
+      const d = shot.dir;
+      // オフセット：進行方向に垂直な横 8m・高さ 2.0m → 後方 20m・高さ 26m
+      const ox =  d.z * 8 * (1 - k) - d.x * 20 * k;
+      const oy =  2.0 * (1 - k) + 26 * k;
+      const oz = -d.x * 8 * (1 - k) - d.z * 20 * k;
+      camPos = new THREE.Vector3(ball.position.x + ox, ball.position.y + oy, ball.position.z + oz);
+      camera.position.copy(camPos);   // 位置は ball.position + offset(k) で直接決める（lerp の重ね掛けなし）
+      camLook = new THREE.Vector3(ball.position.x + d.x * (6 + 10 * k), ball.position.y, ball.position.z + d.z * (6 + 10 * k));
+      lookCur.lerp(camLook, 0.35);   // 視点だけは従来どおり緩やかに追随
     }
   }
   camera.lookAt(lookCur);
-  if (state === "aim" || state === "hold") remainEl.textContent = Math.round(distToCup());
+  if (state === "aim" || state === "hold" || state === "swing") remainEl.textContent = Math.round(distToCup());
   renderer.render(scene, camera);
 }
 placeChar();
 animate();
 
-window.addEventListener("resize", () => {
+function onResize(){
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+window.addEventListener("resize", onResize);
+window.addEventListener("orientationchange", onResize);
 
 /* デバッグ／検証用API */
 window.__golf = {
@@ -659,7 +724,7 @@ window.__golf = {
   setAim: deg => { aimOffset = deg * Math.PI / 180; updateArrow(); },
   press: () => pressStart(),
   release: () => releaseShot(),
-  fireAt: p => { if (state === "aim"){ pressStart(); fire(p); } },
+  fireAt: p => { if (state === "aim"){ pressStart(); needlePos = p; releaseShot(); } },
   place: (x, z) => { if (state === "aim"){ ball.position.set(x, BALL_R, z); placeChar(); updateArrow(); snapCam = true; } }
 };
 </script>
