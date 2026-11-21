@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>HD-2D フィールドゴルフ 試作（テストホール）</title>
+<link rel="icon" href="data:,">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#79b5d9; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; touch-action:none; user-select:none; -webkit-user-select:none; }
+  #game { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* 上部情報 */
+  #topbar { position:fixed; top:8px; left:10px; z-index:10; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.55); pointer-events:none; }
+  #topbar .hole { font-size:17px; font-weight:700; letter-spacing:.02em; }
+  #topbar .sub { font-size:13px; margin-top:2px; }
+  #topbar .sub b { font-size:15px; }
+
+  /* スイングゲージ */
+  #gaugeWrap { position:fixed; top:10px; left:50%; transform:translateX(-50%); width:min(520px,50vw); z-index:10; pointer-events:none; }
+  #gaugeLabel { text-align:center; color:#fff; font-size:12px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.6); margin-bottom:3px; letter-spacing:.15em; }
+  #gauge { position:relative; height:22px; background:linear-gradient(90deg,#e74c3c,#f1c40f 38%,#f1c40f 62%,#e74c3c); border:2px solid rgba(255,255,255,.85); border-radius:11px; box-shadow:0 2px 8px rgba(0,0,0,.35); overflow:hidden; }
+  #bestZone { position:absolute; top:0; bottom:0; left:46%; width:8%; background:rgba(46,204,113,.85); border-left:2px solid #fff; border-right:2px solid #fff; }
+  #needle { position:absolute; top:-2px; bottom:-2px; width:5px; margin-left:-2.5px; background:#fff; box-shadow:0 0 6px #000; border-radius:2px; left:50%; display:none; }
+  #gaugeMsg { text-align:center; color:#fff; font-size:14px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.65); margin-top:5px; min-height:19px; }
+
+  /* クラブリスト（右上） */
+  #clubList { position:fixed; top:8px; right:8px; z-index:10; width:104px; max-height:62vh; overflow-y:auto; background:rgba(12,26,18,.62); border:1px solid rgba(255,255,255,.35); border-radius:10px; padding:4px; backdrop-filter:blur(2px); }
+  #clubList .ttl { color:#ffe9a8; font-size:11px; font-weight:700; text-align:center; padding:2px 0 4px; letter-spacing:.1em; }
+  .club { display:flex; justify-content:space-between; align-items:center; padding:4px 7px; margin:2px 0; border-radius:6px; color:#e8f2e8; font-size:13px; cursor:pointer; background:rgba(255,255,255,.06); }
+  .club .d { color:#b9d6b9; font-size:11px; }
+  .club.sel { background:#2e9e57; color:#fff; font-weight:700; }
+  .club.sel .d { color:#eaffea; }
+
+  /* スティック（左下） */
+  #stick { position:fixed; left:22px; bottom:26px; width:118px; height:118px; border-radius:50%; background:rgba(10,20,14,.38); border:2px solid rgba(255,255,255,.5); z-index:10; }
+  #stick::before { content:"方向"; position:absolute; top:-19px; left:0; right:0; text-align:center; color:#fff; font-size:11px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  #knob { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,255,255,.82); box-shadow:0 2px 6px rgba(0,0,0,.4); }
+
+  /* ショットボタン（右下） */
+  #shotBtn { position:fixed; right:24px; bottom:30px; width:104px; height:104px; border-radius:50%; z-index:10;
+    background:radial-gradient(circle at 35% 30%, #ff9d5c, #e8541d 70%); border:3px solid rgba(255,255,255,.85);
+    color:#fff; font-size:19px; font-weight:800; letter-spacing:.08em; box-shadow:0 4px 14px rgba(0,0,0,.45); cursor:pointer; }
+  #shotBtn:active, #shotBtn.hold { background:radial-gradient(circle at 35% 30%, #ffd35c, #e8a51d 70%); transform:scale(.96); }
+  #shotBtn:disabled { opacity:.45; }
+
+  /* 結果オーバーレイ */
+  #result { position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center; background:rgba(8,20,12,.45); }
+  #result .card { background:rgba(255,255,255,.95); border-radius:16px; padding:26px 34px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  #result .big { font-size:26px; font-weight:800; color:#14532d; }
+  #result .detail { font-size:15px; color:#33475b; margin-top:8px; }
+  #result button { margin-top:16px; padding:10px 26px; font-size:16px; font-weight:700; border:none; border-radius:9px; background:#2e9e57; color:#fff; cursor:pointer; }
+
+  #hint { position:fixed; bottom:6px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="topbar">
+  <div class="hole">HOLE 1 ・ はじまりの野</div>
+  <div class="sub">Par 4 ／ <span id="strokes">0</span> 打目 ・ 残り <b id="remain">350</b> m</div>
+</div>
+
+<div id="gaugeWrap">
+  <div id="gaugeLabel">SWING</div>
+  <div id="gauge"><div id="bestZone"></div><div id="needle"></div></div>
+  <div id="gaugeMsg"></div>
+</div>
+
+<div id="clubList"><div class="ttl">CLUB</div></div>
+
+<div id="stick"><div id="knob"></div></div>
+<button id="shotBtn">SHOT</button>
+
+<div id="result"><div class="card">
+  <div class="big" id="resultTitle">カップイン！</div>
+  <div class="detail" id="resultDetail"></div>
+  <button id="againBtn">もう一度回る</button>
+</div></div>
+
+<div id="hint">スティック：方向 ／ SHOT：押してる間ゲージが往復、離すと打つ</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+/* ============ データ（試作計画のクラブパラメータ表） ============ */
+const CLUBS = [
+  { name:"1W", dist:230, angle:12, carry:0.85, gauge:0.90, best:8  },
+  { name:"3W", dist:210, angle:14, carry:0.86, gauge:0.95, best:9  },
+  { name:"5W", dist:195, angle:16, carry:0.86, gauge:1.00, best:10 },
+  { name:"UT", dist:180, angle:18, carry:0.87, gauge:1.00, best:10 },
+  { name:"4I", dist:170, angle:20, carry:0.88, gauge:1.05, best:11 },
+  { name:"5I", dist:160, angle:22, carry:0.89, gauge:1.08, best:11 },
+  { name:"6I", dist:150, angle:24, carry:0.90, gauge:1.10, best:12 },
+  { name:"7I", dist:140, angle:26, carry:0.90, gauge:1.12, best:12 },
+  { name:"8I", dist:130, angle:29, carry:0.92, gauge:1.15, best:13 },
+  { name:"9I", dist:120, angle:32, carry:0.93, gauge:1.15, best:14 },
+  { name:"PW", dist:105, angle:36, carry:0.95, gauge:1.20, best:16 },
+  { name:"AW", dist: 90, angle:40, carry:0.96, gauge:1.20, best:17 },
+  { name:"SW", dist: 70, angle:45, carry:0.97, gauge:1.25, best:18 },
+  { name:"PT", dist:  0, angle: 0, carry:0.00, gauge:1.30, best:20 }
+];
+const HOLE_LEN = 350, PAR = 4;
+const CUP = new THREE.Vector3(0, 0, -HOLE_LEN);
+const GREEN_R = 14;
+const LAKE = { x0:30, x1:98, z0:-272, z1:-118 };   // 右側の湖
+const GRAV = 13, ROLL_A = 65, PUTT_A = 12;
+
+/* ============ 状態 ============ */
+let state = "aim";           // aim | hold | fly | roll | done
+let clubIdx = 0;
+let strokes = 0;
+let aimOffset = 0;           // ラジアン（スティック）
+let lockedAim = 0;
+let holdStart = 0, needlePos = 0.5;
+let shot = null;             // 飛行中データ
+let prevBallPos = new THREE.Vector3(0, 0, 0);
+let msgTimer = null;
+
+/* ============ Three.js 準備 ============ */
+const container = document.getElementById("game");
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+container.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fd3ee);
+scene.fog = new THREE.Fog(0x9fd3ee, 180, 700);
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 1500);
+scene.add(new THREE.HemisphereLight(0xcfeaff, 0x4a7c43, 0.95));
+const sun = new THREE.DirectionalLight(0xfff2d8, 0.75);
+sun.position.set(60, 120, 40); scene.add(sun);
+
+function rng(seed){ let a = seed; return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rand = rng(20261121);
+
+/* ============ コース ============ */
+function plane(w, l, color, x, z, y){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), new THREE.MeshLambertMaterial({ color }));
+  m.rotation.x = -Math.PI/2; m.position.set(x, y||0, z); scene.add(m); return m;
+}
+plane(500, 900, 0x3f8f4e, 0, -160, -0.05);                 // ラフ全体
+plane(50, 400, 0x63c168, 0, -165, 0);                      // フェアウェイ
+(function(){ // グリーン
+  const g = new THREE.Mesh(new THREE.CircleGeometry(GREEN_R, 40), new THREE.MeshLambertMaterial({ color:0x83d97e }));
+  g.rotation.x = -Math.PI/2; g.position.set(CUP.x, 0.02, CUP.z); scene.add(g);
+})();
+// 湖（右側）
+(function(){
+  const w = new THREE.Mesh(new THREE.PlaneGeometry(LAKE.x1-LAKE.x0, LAKE.z1-LAKE.z0),
+    new THREE.MeshPhongMaterial({ color:0x2f8fd0, transparent:true, opacity:0.82, shininess:120 }));
+  w.rotation.x = -Math.PI/2;
+  w.position.set((LAKE.x0+LAKE.x1)/2, 0.04, (LAKE.z0+LAKE.z1)/2); scene.add(w);
+  const sand = new THREE.Mesh(new THREE.PlaneGeometry(LAKE.x1-LAKE.x0+8, LAKE.z1-LAKE.z0+8),
+    new THREE.MeshLambertMaterial({ color:0xe4d193 }));
+  sand.rotation.x = -Math.PI/2;
+  sand.position.set((LAKE.x0+LAKE.x1)/2, 0.01, (LAKE.z0+LAKE.z1)/2); scene.add(sand);
+})();
+// 遠景の山と雲
+for (let i=0;i<6;i++){
+  const mtn = new THREE.Mesh(new THREE.ConeGeometry(60+rand()*50, 55+rand()*45, 5),
+    new THREE.MeshLambertMaterial({ color:0x7d9cbd }));
+  mtn.position.set(-260+i*105, 20, -480-rand()*60); scene.add(mtn);
+}
+for (let i=0;i<7;i++){
+  const cl = new THREE.Mesh(new THREE.SphereGeometry(9+rand()*8, 10, 8),
+    new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.92 }));
+  cl.scale.y = 0.38; cl.position.set(-220+rand()*440, 78+rand()*30, -120-rand()*300); scene.add(cl);
+}
+// 3Dオブジェクト：木・岩（両サイド）
+function tree(x, z, s){
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35*s, 0.5*s, 2.6*s, 6),
+    new THREE.MeshLambertMaterial({ color:0x7a5230 }));
+  trunk.position.y = 1.3*s; g.add(trunk);
+  const greens = [0x2e7d32, 0x388e3c, 0x43a047];
+  for (let i=0;i<3;i++){
+    const c = new THREE.Mesh(new THREE.ConeGeometry((2.3-i*0.5)*s, 3.4*s, 7),
+      new THREE.MeshLambertMaterial({ color:greens[i%3] }));
+    c.position.y = (2.6 + i*1.5)*s; g.add(c);
+  }
+  g.position.set(x, 0, z); g.rotation.y = rand()*Math.PI; scene.add(g);
+}
+function rock(x, z, s){
+  const r = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4*s, 0),
+    new THREE.MeshLambertMaterial({ color:0x8d99a4 }));
+  r.position.set(x, 0.7*s, z); r.rotation.set(rand()*3, rand()*3, rand()*3);
+  r.scale.y = 0.7; scene.add(r);
+}
+for (let z=-8; z>=-372; z-=11+rand()*9){
+  for (const side of [-1, 1]){
+    const x = side * (33 + rand()*26);
+    if (side > 0 && z < LAKE.z1+6 && z > LAKE.z0-6 && x < LAKE.x1+6) { /* 湖の向こう岸 */
+      if (rand() < 0.7) tree(side*(LAKE.x1+8+rand()*14), z, 0.9+rand()*0.7);
+      continue;
+    }
+    if (rand() < 0.78) tree(x, z+rand()*5, 0.9+rand()*0.8); else rock(x, z, 0.7+rand()*0.8);
+  }
+}
+for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // グリーン奥
+// 鳥居（カップ奥）と祠
+(function(){
+  const red = new THREE.MeshLambertMaterial({ color:0xc23a24 });
+  const g = new THREE.Group();
+  for (const sx of [-3.4, 3.4]){
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 6.4, 8), red);
+    p.position.set(sx, 3.2, 0); g.add(p);
+  }
+  const top = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.62, 0.8), red); top.position.y = 6.6; g.add(top);
+  const mid = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.45, 0.6), red); mid.position.y = 5.2; g.add(mid);
+  g.position.set(0, 0, CUP.z - 9); scene.add(g);
+  const shrine = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 1.6), new THREE.MeshLambertMaterial({ color:0xd8cfc0 }));
+  body.position.y = 0.9; shrine.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 1.1, 4), new THREE.MeshLambertMaterial({ color:0x5b4632 }));
+  roof.position.y = 2.35; roof.rotation.y = Math.PI/4; shrine.add(roof);
+  shrine.position.set(0, 0, CUP.z - 13.5); scene.add(shrine);
+})();
+// カップ＆旗
+(function(){
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.55, 20), new THREE.MeshBasicMaterial({ color:0x10240f }));
+  hole.rotation.x = -Math.PI/2; hole.position.set(CUP.x, 0.045, CUP.z); scene.add(hole);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.4, 6),
+    new THREE.MeshLambertMaterial({ color:0xf5f5f5 }));
+  pole.position.set(CUP.x, 1.7, CUP.z); scene.add(pole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.0),
+    new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide }));
+  flag.position.set(CUP.x+0.87, 2.85, CUP.z); scene.add(flag);
+})();
+
+/* ============ ボール／キャラ／マーカー ============ */
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.24, 18, 14),
+  new THREE.MeshPhongMaterial({ color:0xffffff, shininess:60 }));
+ball.position.set(0, 0.24, 0); scene.add(ball);
+function blobShadow(r, opacity){
+  const s = new THREE.Mesh(new THREE.CircleGeometry(r, 20),
+    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity }));
+  s.rotation.x = -Math.PI/2; s.position.y = 0.03; scene.add(s); return s;
+}
+const ballShadow = blobShadow(0.42, 0.3);
+const marker = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 32),
+  new THREE.MeshBasicMaterial({ color:0xfff176, transparent:true, opacity:0.9, side:THREE.DoubleSide }));
+marker.rotation.x = -Math.PI/2; marker.position.y = 0.05; scene.add(marker);
+// 飛行中の目印（マップ状態でも見える光）
+const glowTex = (function(){
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const x = c.getContext("2d");
+  const gr = x.createRadialGradient(32,32,2,32,32,30);
+  gr.addColorStop(0, "rgba(255,255,180,1)"); gr.addColorStop(1, "rgba(255,255,180,0)");
+  x.fillStyle = gr; x.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+})();
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, transparent:true, depthTest:false }));
+glow.scale.set(5, 5, 1); glow.visible = false; scene.add(glow);
+// 軌跡
+const TRAIL_MAX = 240;
+const trailPos = new Float32Array(TRAIL_MAX * 3);
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3));
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.75 }));
+trail.visible = false; scene.add(trail);
+let trailN = 0;
+function trailReset(){ trailN = 0; trail.visible = true; trailGeo.setDrawRange(0, 0); }
+function trailPush(p){
+  if (trailN >= TRAIL_MAX) return;
+  trailPos[trailN*3] = p.x; trailPos[trailN*3+1] = p.y; trailPos[trailN*3+2] = p.z;
+  trailN++; trailGeo.setDrawRange(0, trailN); trailGeo.attributes.position.needsUpdate = true;
+}
+// キャラ（Canvas簡易スプライト：青チュニック＋赤マント＋茶髪）
+const charTex = (function(){
+  const c = document.createElement("canvas"); c.width = 96; c.height = 144;
+  const x = c.getContext("2d");
+  x.fillStyle = "#b03a2e"; x.beginPath(); x.moveTo(30,52); x.lineTo(14,118); x.lineTo(34,122); x.lineTo(40,60); x.fill(); // マント
+  x.fillStyle = "#f2c79b"; x.fillRect(40,64,14,34);   // 腕
+  x.fillStyle = "#2456a6"; x.fillRect(34,50,30,52);   // チュニック
+  x.fillStyle = "#d4af37"; x.fillRect(34,72,30,5);    // 金縁
+  x.fillStyle = "#6b4a2b"; x.fillRect(34,98,30,7);    // ベルト
+  x.fillStyle = "#efe6cf"; x.fillRect(37,105,10,26); x.fillRect(52,105,10,26); // ズボン
+  x.fillStyle = "#5b3a22"; x.fillRect(35,131,13,9); x.fillRect(51,131,13,9);   // 靴
+  x.fillStyle = "#f6cfa5"; x.beginPath(); x.arc(49,36,15,0,7); x.fill();      // 顔
+  x.fillStyle = "#8a5a2e"; x.beginPath(); x.arc(49,31,16,Math.PI,0); x.fill(); // 髪
+  x.fillRect(33,28,5,30); x.fillRect(60,28,5,30);
+  x.fillStyle = "#2e7d4f"; x.fillRect(42,35,3,3); x.fillRect(54,35,3,3);      // 目
+  return new THREE.CanvasTexture(c);
+})();
+const chara = new THREE.Sprite(new THREE.SpriteMaterial({ map:charTex, transparent:true }));
+chara.scale.set(0.62, 0.93, 1); scene.add(chara);
+const charShadow = blobShadow(0.4, 0.28);
+// 方向ガイド矢印
+let arrow = null;
+function updateArrow(){
+  if (arrow){ scene.remove(arrow); arrow = null; }
+  if (state !== "aim" && state !== "hold") return;
+  const dir = aimVector(aimOffset);
+  const len = Math.max(3, Math.min(effDist(), distToCup()) * 0.4);
+  const head = Math.min(2.2, len * 0.35);
+  arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(ball.position.x, 0.25, ball.position.z),
+    len, 0xffeb3b, head, head * 0.55);
+  scene.add(arrow);
+}
+
+/* ============ 計算ヘルパ ============ */
+function distToCup(){ return Math.hypot(ball.position.x - CUP.x, ball.position.z - CUP.z); }
+function baseAngle(){ return Math.atan2(CUP.x - ball.position.x, -(CUP.z - ball.position.z)) * -1; }
+function aimVector(off){
+  // カップ方向を 0 とし、off（符号付きラジアン、＋＝右）だけ傾けた単位ベクトル
+  const dx = CUP.x - ball.position.x, dz = CUP.z - ball.position.z;
+  const L = Math.hypot(dx, dz) || 1;
+  const bx = dx / L, bz = dz / L;
+  const a = -off, c = Math.cos(a), s = Math.sin(a);
+  return new THREE.Vector3(bx * c + bz * s, 0, bz * c - bx * s).normalize();
+}
+function effDist(){
+  const c = CLUBS[clubIdx];
+  if (c.name === "PT") return Math.min(distToCup(), 60);
+  return c.dist;
+}
+function inLake(x, z){ return x > LAKE.x0 && x < LAKE.x1 && z < LAKE.z1 && z > LAKE.z0; }
+function onGreen(){ return distToCup() <= GREEN_R; }
+
+/* ============ UI ============ */
+const clubListEl = document.getElementById("clubList");
+CLUBS.forEach((c, i) => {
+  const d = document.createElement("div");
+  d.className = "club" + (i === 0 ? " sel" : "");
+  d.innerHTML = "<span>" + c.name + "</span><span class='d'>" + (c.dist ? c.dist + "m" : "自動") + "</span>";
+  d.addEventListener("click", () => { if (state === "aim") selectClub(i); });
+  clubListEl.appendChild(d);
+});
+const bestZone = document.getElementById("bestZone");
+const needle = document.getElementById("needle");
+const msgEl = document.getElementById("gaugeMsg");
+const remainEl = document.getElementById("remain");
+const strokesEl = document.getElementById("strokes");
+function selectClub(i){
+  clubIdx = i;
+  [...clubListEl.querySelectorAll(".club")].forEach((el, j) => el.classList.toggle("sel", j === i));
+  const c = CLUBS[i];
+  bestZone.style.left = (50 - c.best/2) + "%";
+  bestZone.style.width = c.best + "%";
+  updateArrow();
+}
+function showMsg(t, ms){
+  msgEl.textContent = t;
+  if (msgTimer) clearTimeout(msgTimer);
+  if (ms) msgTimer = setTimeout(() => { msgEl.textContent = ""; }, ms);
+}
+selectClub(0);
+
+/* スティック */
+const stick = document.getElementById("stick"), knob = document.getElementById("knob");
+let stickDrag = null;
+function stickSet(dx){
+  const cl = Math.max(-42, Math.min(42, dx));
+  knob.style.transform = "translate(" + cl + "px,0)";
+  aimOffset = (cl / 42) * 0.6;    // ±約34°
+  updateArrow();
+}
+stick.addEventListener("pointerdown", e => { stickDrag = true; stick.setPointerCapture(e.pointerId); stickSet(e.clientX - stick.getBoundingClientRect().left - 59); });
+stick.addEventListener("pointermove", e => { if (stickDrag) stickSet(e.clientX - stick.getBoundingClientRect().left - 59); });
+stick.addEventListener("pointerup", () => { stickDrag = null; });
+stick.addEventListener("pointercancel", () => { stickDrag = null; });
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft")  { aimOffset = Math.max(-0.6, aimOffset - 0.05); knob.style.transform = "translate(" + (aimOffset/0.6*42) + "px,0)"; updateArrow(); }
+  if (e.key === "ArrowRight") { aimOffset = Math.min( 0.6, aimOffset + 0.05); knob.style.transform = "translate(" + (aimOffset/0.6*42) + "px,0)"; updateArrow(); }
+  if (e.key === " " && state === "aim") { e.preventDefault(); pressStart(); }
+});
+window.addEventListener("keyup", e => { if (e.key === " " && state === "hold") releaseShot(); });
+
+/* ============ 打球音（WebAudio ノイズ系） ============ */
+let AC = null;
+function audio(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); return AC; }
+function hitSound(best, putt){
+  try {
+    const ac = audio(), t = ac.currentTime;
+    if (putt){
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "sine"; o.frequency.value = 220;
+      g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.13); return;
+    }
+    const len = Math.floor(ac.sampleRate * 0.3);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i=0;i<len;i++) ch[i] = (Math.random()*2-1) * (1 - i/len);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.1;
+    bp.frequency.setValueAtTime(750, t);
+    bp.frequency.exponentialRampToValueAtTime(2900, t + 0.1);
+    bp.frequency.exponentialRampToValueAtTime(420, t + 0.28);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(best ? 0.85 : 0.5, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    src.connect(bp).connect(g).connect(ac.destination); src.start(t);
+    if (best){ // 低い胴鳴り
+      const o = ac.createOscillator(), og = ac.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(160, t);
+      o.frequency.exponentialRampToValueAtTime(60, t + 0.18);
+      og.gain.setValueAtTime(0.4, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      o.connect(og).connect(ac.destination); o.start(t); o.stop(t + 0.22);
+    }
+  } catch(e) { /* 試作：音が出なくても続行 */ }
+}
+function splashSound(){
+  try {
+    const ac = audio(), t = ac.currentTime;
+    const len = Math.floor(ac.sampleRate * 0.4);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i=0;i<len;i++) ch[i] = (Math.random()*2-1) * Math.sin(Math.PI * i/len);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
+    const g = ac.createGain(); g.gain.value = 0.5;
+    src.connect(lp).connect(g).connect(ac.destination); src.start(t);
+  } catch(e) {}
+}
+function cupSound(){
+  try {
+    const ac = audio(), t = ac.currentTime;
+    [660, 990].forEach((f, i) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.001, t + i*0.12);
+      g.gain.exponentialRampToValueAtTime(0.3, t + i*0.12 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i*0.12 + 0.35);
+      o.connect(g).connect(ac.destination); o.start(t + i*0.12); o.stop(t + i*0.12 + 0.4);
+    });
+  } catch(e) {}
+}
+
+/* ============ ショット ============ */
+const shotBtn = document.getElementById("shotBtn");
+let snapCam = true;
+const lookCur = new THREE.Vector3(0, 0, -10);
+function pressStart(){
+  if (state !== "aim") return;
+  audio();
+  state = "hold";
+  lockedAim = aimOffset;
+  holdStart = performance.now();
+  needle.style.display = "block";
+  shotBtn.classList.add("hold");
+  if (arrow) arrow.visible = true;
+}
+function releaseShot(){ if (state === "hold") fire(needlePos); }
+shotBtn.addEventListener("pointerdown", e => { e.preventDefault(); pressStart(); });
+shotBtn.addEventListener("pointerup", e => { e.preventDefault(); releaseShot(); });
+shotBtn.addEventListener("pointercancel", () => releaseShot());
+
+function fire(p){
+  const c = CLUBS[clubIdx];
+  needle.style.display = "none";
+  shotBtn.classList.remove("hold");
+  const half = c.best / 200;                    // ベスト帯の半幅（比率）
+  const dev = p - 0.5;
+  let best = true, dN = 0, sign = 0;
+  if (Math.abs(dev) > half){
+    best = false;
+    sign = Math.sign(dev);
+    dN = Math.min(1, (Math.abs(dev) - half) / (0.5 - half));
+  }
+  const curve = sign * dN * 12 * Math.PI / 180; // 最大12°
+  const mult = 1 - 0.25 * dN;                   // 最大−25%
+  strokes++; strokesEl.textContent = strokes;
+  prevBallPos.copy(ball.position);
+  const dir = aimVector(lockedAim + curve);
+  const isPutt = c.name === "PT";
+  hitSound(best, isPutt);
+  showMsg(best ? "ベストショット！" : (dN > 0.66 ? "大きく外れた…" : "少し外れた"), 1800);
+  trailReset(); glow.visible = true; marker.visible = false;
+  if (arrow) arrow.visible = false;
+  chara.visible = false; charShadow.visible = false;
+  shot = { dir, t:0, putt:isPutt, vel:null, rollV:0, rollDist:0, origin:ball.position.clone() };
+  if (isPutt){
+    const D = Math.min(distToCup(), 60) * mult;
+    shot.rollDist = D;
+    shot.rollV = Math.sqrt(2 * PUTT_A * Math.max(D, 0.01));
+    state = "roll";
+  } else {
+    const D = c.dist * mult;
+    const carry = D * c.carry;
+    shot.carryDist = carry;
+    shot.rollDist = D - carry;
+    const th = c.angle * Math.PI / 180;
+    const v = Math.sqrt(carry * GRAV / Math.sin(2 * th));
+    shot.vel = new THREE.Vector3(dir.x * v * Math.cos(th), v * Math.sin(th), dir.z * v * Math.cos(th));
+    state = "fly";
+  }
+}
+function startRoll(){
+  ball.position.y = 0.24;
+  if (inLake(ball.position.x, ball.position.z)) return water();
+  if (shot.rollDist <= 0.05) return finishShot();
+  shot.rollV = Math.sqrt(2 * ROLL_A * shot.rollDist);
+  state = "roll";
+}
+function finishShot(){
+  ball.position.y = 0.24;
+  glow.visible = false; trail.visible = false;
+  if (distToCup() < 0.55) return holed();
+  state = "aim";
+  aimOffset = 0; knob.style.transform = "translate(0px,0)";
+  placeChar(); marker.visible = true;
+  suggestClub(); updateArrow(); snapCam = true;
+}
+function water(){
+  splashSound();
+  strokes++; strokesEl.textContent = strokes;
+  showMsg("池ポチャ… 1罰で前の位置から打ち直し", 2400);
+  ball.position.copy(prevBallPos); ball.position.y = 0.24;
+  glow.visible = false; trail.visible = false;
+  state = "aim";
+  aimOffset = 0; knob.style.transform = "translate(0px,0)";
+  placeChar(); marker.visible = true;
+  suggestClub(); updateArrow(); snapCam = true;
+}
+function holed(){
+  state = "done";
+  glow.visible = false; trail.visible = false; marker.visible = false;
+  ball.position.set(CUP.x, 0.12, CUP.z);
+  cupSound();
+  const d = strokes - PAR;
+  const label = d <= -2 ? "イーグル！" : d === -1 ? "バーディー！" : d === 0 ? "パー" : d === 1 ? "ボギー" : "+" + d;
+  document.getElementById("resultTitle").textContent = "カップイン！ " + label;
+  document.getElementById("resultDetail").textContent = "HOLE 1（Par " + PAR + "）を " + strokes + " 打でクリア";
+  document.getElementById("result").style.display = "flex";
+}
+document.getElementById("againBtn").addEventListener("click", () => {
+  document.getElementById("result").style.display = "none";
+  ball.position.set(0, 0.24, 0);
+  strokes = 0; strokesEl.textContent = 0;
+  state = "aim"; aimOffset = 0; knob.style.transform = "translate(0px,0)";
+  selectClub(0); placeChar(); marker.visible = true; updateArrow(); snapCam = true;
+  showMsg("", 0);
+});
+function placeChar(){
+  const dx = CUP.x - ball.position.x, dz = CUP.z - ball.position.z;
+  const L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+  const lx = uz, lz = -ux;   // 進行方向の左
+  chara.visible = true; charShadow.visible = true;
+  chara.position.set(ball.position.x + lx * 0.62, 0.48, ball.position.z + lz * 0.62);
+  charShadow.position.set(chara.position.x, 0.03, chara.position.z);
+}
+function suggestClub(){
+  if (onGreen()) return selectClub(13);
+  const need = distToCup();
+  // dist が大きい順に並んでいるので「足りる中で最小」は末尾側
+  let pick = 0;
+  for (let i = 12; i >= 0; i--) if (CLUBS[i].dist >= need) { pick = i; break; }
+  selectClub(pick);
+}
+
+/* ============ メインループ ============ */
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const now = performance.now();
+  // ゲージ針
+  if (state === "hold"){
+    const el = (now - holdStart) / 1000 / CLUBS[clubIdx].gauge;
+    const ph = el % 2;
+    needlePos = ph < 1 ? ph : 2 - ph;
+    needle.style.left = (needlePos * 100) + "%";
+  }
+  // 物理
+  if (state === "fly" && shot){
+    shot.t += dt;
+    shot.vel.y -= GRAV * dt;
+    ball.position.addScaledVector(shot.vel, dt);
+    if (ball.position.y < 0.24) ball.position.y = 0.24;
+    trailPush(ball.position); glow.position.copy(ball.position);
+    const dx = ball.position.x - shot.origin.x, dz = ball.position.z - shot.origin.z;
+    const traveled = Math.hypot(dx, dz);
+    if (traveled >= shot.carryDist || (ball.position.y <= 0.24 && shot.vel.y < 0)) startRoll();
+  } else if (state === "roll" && shot){
+    shot.t += dt;
+    const a = shot.putt ? PUTT_A : ROLL_A;
+    shot.rollV -= a * dt;
+    if (shot.rollV <= 0){ shot.rollV = 0; finishShot(); }
+    else {
+      ball.position.addScaledVector(shot.dir, shot.rollV * dt);
+      ball.position.y = shot.putt ? 0.24 : 0.24 + Math.max(0, Math.sin(shot.t * 26)) * 0.1 * Math.max(0, Math.min(1, (shot.rollV - 12) / 30));
+      trailPush(ball.position); glow.position.copy(ball.position);
+      const d = distToCup();
+      if (d < 0.55 && shot.rollV < 8) holed();
+      else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
+    }
+  }
+  // ボール影・マーカー
+  if (glow.visible && shot) { const gs = (!shot.putt && shot.t >= 1.0) ? 7 : 1.7; glow.scale.set(gs, gs, 1); }
+  ballShadow.position.set(ball.position.x, 0.03, ball.position.z);
+  marker.position.set(ball.position.x, 0.05, ball.position.z);
+  const pulse = 1 + Math.sin(now * 0.006) * 0.18;
+  marker.scale.set(pulse, pulse, 1);
+  // カメラ
+  let camPos, camLook;
+  if (state === "aim" || state === "hold"){
+    const dir = aimVector(aimOffset);
+    camPos = new THREE.Vector3(ball.position.x - dir.x * 6.5, 3.1, ball.position.z - dir.z * 6.5);
+    camLook = new THREE.Vector3(ball.position.x + dir.x * 11, 0.5, ball.position.z + dir.z * 11);
+    if (snapCam){ camera.position.copy(camPos); snapCam = false; }
+    else camera.position.lerp(camPos, 0.22);
+    lookCur.lerp(camLook, 0.35);
+  } else if ((state === "fly" || state === "roll") && shot){
+    if (shot.putt){
+      camPos = new THREE.Vector3(ball.position.x - shot.dir.x * 6, 3.0, ball.position.z - shot.dir.z * 6);
+      camLook = new THREE.Vector3(ball.position.x + shot.dir.x * 6, 0.3, ball.position.z + shot.dir.z * 6);
+      camera.position.lerp(camPos, 0.25); lookCur.lerp(camLook, 0.3);
+    } else if (shot.t < 1.0){
+      // 第1段：ボール寄り、両サイドの3Dオブジェクトの間を飛ぶ
+      camPos = new THREE.Vector3(ball.position.x - shot.dir.x * 5.5, ball.position.y + 2.1, ball.position.z - shot.dir.z * 5.5);
+      camLook = new THREE.Vector3(ball.position.x + shot.dir.x * 7, ball.position.y + 0.4, ball.position.z + shot.dir.z * 7);
+      camera.position.lerp(camPos, 0.55); lookCur.lerp(camLook, 0.6);
+    } else {
+      // 第2段：マップ状態（ホール全体の引き視点）
+      camPos = new THREE.Vector3(0, 290, 90);
+      camLook = new THREE.Vector3(0, 0, -178);
+      camera.position.lerp(camPos, 0.07); lookCur.lerp(camLook, 0.1);
+    }
+  }
+  camera.lookAt(lookCur);
+  if (state === "aim" || state === "hold") remainEl.textContent = Math.round(distToCup());
+  renderer.render(scene, camera);
+}
+placeChar();
+animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* デバッグ／検証用API */
+window.__golf = {
+  state: () => state,
+  strokes: () => strokes,
+  ballPos: () => ({ x: ball.position.x, y: ball.position.y, z: ball.position.z }),
+  dist: () => distToCup(),
+  club: () => CLUBS[clubIdx].name,
+  select: i => { if (state === "aim") selectClub(i); },
+  setAim: deg => { aimOffset = deg * Math.PI / 180; updateArrow(); },
+  press: () => pressStart(),
+  release: () => releaseShot(),
+  fireAt: p => { if (state === "aim"){ pressStart(); fire(p); } },
+  place: (x, z) => { if (state === "aim"){ ball.position.set(x, 0.24, z); placeChar(); updateArrow(); snapCam = true; } }
+};
+</script>
+</body>
+</html>
