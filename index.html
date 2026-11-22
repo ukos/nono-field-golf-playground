@@ -110,6 +110,8 @@
   #droneBtn { position:absolute; top:calc(50% - 122px); left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
 
   #hint { position:absolute; bottom:calc(6px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
+  #wxPill { position:absolute; top:197px; left:50%; transform:translateX(-50%); z-index:10; padding:5px 14px; font-size:12.5px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.35); border-radius:999px; white-space:nowrap; pointer-events:none; }
+  #wxArrow { display:inline-block; }
 
   /* 横向き（ランドスケープ）対応：低い画面でも UI が収まるように圧縮 */
   @media (orientation: landscape) and (max-height: 540px) {
@@ -120,6 +122,7 @@
     #gaugeWrap { top:80px; }
     #droneBtn { top:calc(56% - 102px); }
     #spinCtl { top:140px; }
+    #wxPill { top:180px; font-size:11.5px; }
     #minimap { width:84px; height:128px; top:56%; }
     #spinCtl button { font-size:10.5px; padding:4px 8px; }
     .club { padding:2px 6px; margin:1px 0; font-size:12px; }
@@ -157,6 +160,7 @@
 <button id="setBtn">⚙ 設定</button>
 <button id="droneBtn">ドローン確認</button>
 <div id="spinCtl"><button data-spin="-1">バックスピン</button><button data-spin="0" class="sel">ニュートラル</button><button data-spin="1">トップスピン</button></div>
+<div id="wxPill" style="display:none"></div>
 
 <div id="settings"><div class="card">
   <h2>設定</h2>
@@ -207,7 +211,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.25.0";
+const PAGE_VER = "0.26.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -373,6 +377,127 @@ function updateOccluders(){
       for (const e of u.mats) e.mat.opacity = e.base * u.fade;
     }
   }
+}
+
+/* ============ 天候：風と雨（2026-11-23 ユーザー指示） ============
+   ホールごとに天候を抽選する。風は向きと強さを持ち、飛距離と弾道に影響する。
+   雨は視界（フォグ）を悪くし、ボールをよく転がらせ、ベストゾーンを狭くする。嵐は大雨＋強風＋突風。 */
+const WX_KINDS = {
+  fine:  { label:"晴れ", fog:1,    roll:1,    best:1,    wind:[0, 5],  gust:0,    rain:0,    dark:1 },
+  light: { label:"小雨", fog:0.75, roll:1.25, best:0.8,  wind:[2, 7],  gust:0.2,  rain:0.4,  dark:0.88 },
+  heavy: { label:"大雨", fog:0.5,  roll:1.45, best:0.65, wind:[4, 10], gust:0.45, rain:0.75, dark:0.74 },
+  storm: { label:"嵐",   fog:0.35, roll:1.6,  best:0.5,  wind:[8, 14], gust:0.8,  rain:1,    dark:0.6 },
+};
+let weather = null;   // { kind, spd, wx, wz }（wx/wz は風が吹いていく向きのベクトル）
+let gustPhase = 0;
+function rollWeather(force){
+  let kind = force;
+  if (!kind){
+    const r = Math.random();
+    kind = r < 0.55 ? "fine" : r < 0.75 ? "light" : r < 0.9 ? "heavy" : "storm";
+  }
+  const w = WX_KINDS[kind];
+  const spd = w.wind[0] + Math.random() * (w.wind[1] - w.wind[0]);
+  const a = Math.random() * Math.PI * 2;
+  weather = { kind, spd, wx: Math.sin(a) * spd, wz: -Math.cos(a) * spd };
+  gustPhase = Math.random() * 10;
+}
+function gustFactor(t){
+  if (!weather) return 1;
+  const g = WX_KINDS[weather.kind].gust;
+  if (!g) return 1;
+  return 1 + g * Math.max(0, Math.sin(t * 1.7 + gustPhase) * 0.7 + Math.sin(t * 3.9 + gustPhase * 2) * 0.3);
+}
+function wxBest(){ return weather ? WX_KINDS[weather.kind].best : 1; }
+function applyWeather(){
+  if (!weather || !curDef) return;
+  const w = WX_KINDS[weather.kind];
+  scene.fog.near = (curDef.fogNear || 180) * w.fog;
+  scene.fog.far = (curDef.fogFar || 700) * w.fog;
+  scene.background.set(curDef.sky).multiplyScalar(w.dark);
+  scene.fog.color.copy(scene.background);
+  sun.intensity = curDef.sunI * (0.55 + 0.45 * w.dark);
+  ensureRain();
+  rainPts.visible = w.rain > 0;
+  rainMat.opacity = Math.min(0.95, w.rain * 1.1);
+  if (backdropMat) backdropMat.color.set(backdropBase).multiplyScalar(w.dark);   // 背景の遠景も天候で暗くする
+  rainGeo.setDrawRange(0, Math.floor(RAIN_N * (0.35 + 0.65 * w.rain)));
+}
+/* 雨粒（カメラ周辺に降らせ続ける） */
+const RAIN_N = 900;
+let rainPts = null, rainMat = null, rainGeo = null, rainVel = null;
+function ensureRain(){
+  if (rainPts) return;
+  rainGeo = new THREE.BufferGeometry();
+  const pos = new Float32Array(RAIN_N * 3); rainVel = new Float32Array(RAIN_N);
+  for (let i = 0; i < RAIN_N; i++){
+    pos[i * 3] = (Math.random() - 0.5) * 90; pos[i * 3 + 1] = Math.random() * 40; pos[i * 3 + 2] = (Math.random() - 0.5) * 90;
+    rainVel[i] = 38 + Math.random() * 18;
+  }
+  rainGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const c = document.createElement("canvas"); c.width = 8; c.height = 32;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0, 0, 0, 32);
+  grad.addColorStop(0, "rgba(200,225,255,0)"); grad.addColorStop(0.5, "rgba(200,225,255,0.9)"); grad.addColorStop(1, "rgba(200,225,255,0)");
+  g.fillStyle = grad; g.fillRect(2, 0, 4, 32);
+  rainMat = new THREE.PointsMaterial({ size: 1.55, map: new THREE.CanvasTexture(c), transparent: true, opacity: 0, depthWrite: false, color: 0xcfe4ff });
+  rainPts = new THREE.Points(rainGeo, rainMat);
+  rainPts.frustumCulled = false;
+  rainPts.visible = false;
+  scene.add(rainPts);
+}
+function updateRain(dt){
+  if (!rainPts || !rainPts.visible || !weather) return;
+  const pos = rainGeo.attributes.position.array;
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  const gf = gustFactor(performance.now() / 1000);
+  for (let i = 0; i < RAIN_N; i++){
+    let y = pos[i * 3 + 1] - rainVel[i] * dt;
+    pos[i * 3] += weather.wx * gf * dt * 0.9;
+    pos[i * 3 + 2] += weather.wz * gf * dt * 0.9;
+    if (y < cy - 6){ y = cy + 30 + Math.random() * 8; pos[i * 3] = cx + (Math.random() - 0.5) * 90; pos[i * 3 + 2] = cz + (Math.random() - 0.5) * 90; }
+    pos[i * 3 + 1] = y;
+    if (pos[i * 3] - cx > 45) pos[i * 3] -= 90; else if (pos[i * 3] - cx < -45) pos[i * 3] += 90;
+    if (pos[i * 3 + 2] - cz > 45) pos[i * 3 + 2] -= 90; else if (pos[i * 3 + 2] - cz < -45) pos[i * 3 + 2] += 90;
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+/* 天候ピル（風向きは現在のエイム基準で表示） */
+const wxPillEl = document.getElementById("wxPill");
+function renderWxPill(){
+  if (!weather){ wxPillEl.style.display = "none"; return; }
+  wxPillEl.style.display = "";
+  const w = WX_KINDS[weather.kind];
+  const dir = aimVector(aimOffset);
+  const rel = (Math.atan2(weather.wx, -weather.wz) - Math.atan2(dir.x, -dir.z)) * 180 / Math.PI;
+  const spdNow = weather.spd * ((state === "fly" && shot) ? gustFactor(shot.t) : gustFactor(performance.now() / 1000));
+  const icon = weather.kind === "fine" ? "☀" : weather.kind === "light" ? "🌦" : weather.kind === "heavy" ? "🌧" : "⛈";
+  const lbl = Math.abs(rel) < 35 ? "追い風" : Math.abs(rel) > 145 ? "向かい風" : "横風";
+  wxPillEl.innerHTML = icon + " " + w.label + " ・ <span id='wxArrow' style='transform:rotate(" + Math.round(rel - 90) + "deg)'>➤</span> " + lbl + " " + spdNow.toFixed(0) + " m/s" + (w.gust >= 0.45 ? "（突風）" : "");
+}
+/* 水面エフェクト（波紋テクスチャを流す） */
+const waterFx = [];
+let waterTexShared = null;
+function getWaterTex(){
+  if (waterTexShared) return waterTexShared;
+  const c = document.createElement("canvas"); c.width = c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 90; i++){
+    const y = Math.random() * 256, x = Math.random() * 256, len = 14 + Math.random() * 42;
+    g.strokeStyle = "rgba(160,205,255," + (0.25 + Math.random() * 0.4) + ")";
+    g.lineWidth = 1 + Math.random() * 2;
+    g.beginPath();
+    for (let s = 0; s <= 4; s++){ const px = x + len * s / 4, py = y + Math.sin(s * 1.7 + i) * 2.2; s ? g.lineTo(px, py) : g.moveTo(px, py); }
+    g.stroke();
+  }
+  for (let i = 0; i < 130; i++){
+    g.fillStyle = "rgba(255,255,255," + (0.3 + Math.random() * 0.5) + ")";
+    g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  }
+  waterTexShared = new THREE.CanvasTexture(c);
+  waterTexShared.wrapS = waterTexShared.wrapT = THREE.RepeatWrapping;
+  return waterTexShared;
 }
 
 /* ============ 地形（ローポリ起伏）と当たり判定 ============
@@ -633,7 +758,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=250", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=260", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -689,7 +814,7 @@ function buildGreenMesh(){
   const m = new THREE.Mesh(geo, mat);
   courseGroup.add(m);
   if (!greenTexObj){
-    new THREE.TextureLoader().load("tex/gtex_green.png?v=250", (tex) => {
+    new THREE.TextureLoader().load("tex/gtex_green.png?v=260", (tex) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.magFilter = THREE.NearestFilter;
       greenTexObj = tex; mat.map = tex; mat.needsUpdate = true;
@@ -708,14 +833,23 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=250", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=260", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
 }
 function flatPlane(w, l, mat, x, y, z){
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), mat);
-  m.rotation.x = -Math.PI/2; m.position.set(x, y, z); courseGroup.add(m); return m;
+  m.rotation.x = -Math.PI/2; m.position.set(x, y, z); courseGroup.add(m);
+  // 水面には波紋テクスチャを流してエフェクトをかける（2026-11-23 ユーザー指示）
+  if (mat.isMeshPhongMaterial && mat.transparent && (mat.color.getHex() === 0x2f8fd0 || mat.color.getHex() === 0x39686e)){
+    const tex = getWaterTex().clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(Math.max(1, Math.round(w / 16)), Math.max(1, Math.round(l / 16)));
+    mat.map = tex; mat.needsUpdate = true;
+    waterFx.push({ tex, ph: Math.random() * 10 });
+  }
+  return m;
 }
 // 3Dオブジェクト：木・岩・建物（コースの両サイドや障害物）
 function tree(x, z, s){
@@ -1233,6 +1367,7 @@ function buildCourse(i){
   scene.add(courseGroup);
   colliders.length = 0;
   occluders.length = 0;
+  waterFx.length = 0;
   curH = def.h; curSurfFn = def.surf;
   curWaterFn = def.waterFn || ((x, z) => (def.waters || []).some(w => x > w.x0 && x < w.x1 && z < w.z1 && z > w.z0));
   scene.background.set(def.sky); scene.fog.color.set(def.sky);
@@ -1244,10 +1379,13 @@ function buildCourse(i){
   buildBackdrop(def);
   buildGreenCup();
   def.decorate();
+  rollWeather();   // ホールごとに天候を抽選し、フォグ・空・雨・風へ反映する
+  applyWeather();
 }
 // コース背景：NONO HD-2D lite の地方遠景（far_*）を円筒に貼る（コースごとに buildCourse が差し替え）
 const bgTexCache = {};
 let bgAlphaTex = null;
+let backdropMat = null, backdropBase = 0xffffff;   // 天候の暗転をかけるため現在の背景マテリアルを保持
 function getBgAlphaTex(){
   if (bgAlphaTex) return bgAlphaTex;
   const c = document.createElement("canvas"); c.width = 4; c.height = 256;
@@ -1263,14 +1401,15 @@ function buildBackdrop(def){
   const r = Math.hypot(250, 290 + HOLE_LEN / 2) + 25;
   const h = r * 0.62;
   const mat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, transparent: true, depthWrite: false, opacity: 0, alphaMap: getBgAlphaTex() });
-  if (def.bgDim) mat.color.set(def.bgDim);
+  backdropMat = mat; backdropBase = def.bgDim || 0xffffff;
+  mat.color.set(backdropBase);
   const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 48, 1, true), mat);
   mesh.position.set(0, h / 2 - 40, 15 - HOLE_LEN / 2);
   mesh.renderOrder = -1;
   courseGroup.add(mesh);
   const key = def.bg;
   if (bgTexCache[key]){ mat.map = bgTexCache[key]; mat.opacity = 1; mat.needsUpdate = true; }
-  else new THREE.TextureLoader().load("bg/" + key + ".jpg?v=250", (tex) => {
+  else new THREE.TextureLoader().load("bg/" + key + ".jpg?v=260", (tex) => {
     tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(5, 1);
     bgTexCache[key] = tex; mat.map = tex; mat.opacity = 1; mat.needsUpdate = true;
   });
@@ -1339,32 +1478,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=250", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=250", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=260", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1513,7 +1652,7 @@ const strokesEl = document.getElementById("strokes");
 const spinCtlEl = document.getElementById("spinCtl");
 function effSpin(){ return CLUBS[clubIdx].name === "PT" ? 0 : settings.spin; }
 function updateBestZone(){
-  const w = CLUBS[clubIdx].best * (effSpin() !== 0 ? 0.5 : 1);
+  const w = CLUBS[clubIdx].best * (effSpin() !== 0 ? 0.5 : 1) * wxBest();   // 雨だとベストゾーンが狭くなる
   bestZone.style.left = (50 - w / 2) + "%";
   bestZone.style.width = w + "%";
 }
@@ -2121,7 +2260,7 @@ function fire(p){
   const c = CLUBS[clubIdx];
   needle.style.display = "none";
   shotBtn.classList.remove("hold");
-  const half = c.best / 200 * (effSpin() !== 0 ? 0.5 : 1);   // ベスト帯の半幅（比率）。スピンをかけると半分
+  const half = c.best / 200 * (effSpin() !== 0 ? 0.5 : 1) * wxBest();   // ベスト帯の半幅（比率）。スピンで半分、雨でも狭くなる
   const dev = p - 0.5;
   let best = true, dN = 0, sign = 0;
   if (Math.abs(dev) > half){
@@ -2152,7 +2291,10 @@ function fire(p){
   } else {
     // ライ係数：止まった地面が悪いと次のショットは飛ばない（2026-11-22 仕様 §11）。コースの空気係数もここで効く
     const lieF = ((SURF[surfaceAt(ball.position.x, ball.position.z)] || SURF.fairway).lie || 1) * (COURSES[courseIdx].air || 1);
-    const D = c.dist * mult * lieF;
+    // 風の追い／向かい成分で飛距離が変わる（横風は飛行中の抗力で流す）
+    const along = weather ? (weather.wx * dir.x + weather.wz * dir.z) : 0;
+    const windF = Math.min(1.3, Math.max(0.72, 1 + along * 0.018));
+    const D = c.dist * mult * lieF * windF;
     const carry = D * c.carry;
     shot.carryDist = carry;
     shot.rollDist = D - carry;
@@ -2237,6 +2379,7 @@ function startRoll(){
   shot.surf = surfaceAt(ball.position.x, ball.position.z);
   const sf = SURF[shot.surf] || SURF.fairway;
   shot.rollDist *= sf.roll;
+  if (weather) shot.rollDist *= WX_KINDS[weather.kind].roll;   // 雨で濡れた地面はよく転がる
   if (shot.spin === 1) shot.rollDist *= 1.45;        // トップスピン：着地後もよく転がる
   else if (shot.spin === -1) shot.rollDist *= 0.4;   // バックスピン：着地で止まる
   // 傾斜：打ち上げでは転がりが短く、打ち降ろしでは長くなる
@@ -2383,6 +2526,11 @@ function animate(){
     if (shot.pattern === "slow" && shot.vel.y < 0 && ball.position.y < shot.apexY * 0.45) dtF = dt * 0.35;
     shot.t += dtF;
     shot.vel.y -= GRAV * dtF;
+    if (weather){   // 風の抗力：ボールは風の流れに引きずられ、突風で強さがうねる
+      const gf = gustFactor(shot.t), K = 0.09;
+      shot.vel.x += (weather.wx * gf - shot.vel.x) * K * dtF;
+      shot.vel.z += (weather.wz * gf - shot.vel.z) * K * dtF;
+    }
     ball.position.addScaledVector(shot.vel, dtF);
     if (ball.position.y > shot.apexY) shot.apexY = ball.position.y;
     flyWindUpdate(shot.vel.length());
@@ -2531,6 +2679,9 @@ function animate(){
   camera.lookAt(lookCur);
   if ((frameNo++ & 7) === 0) drawMinimap();   // コースマップは少し間引いて更新
   updateOccluders();   // カメラとキャラの間に入った建物・木・岩をスケルトン表示に
+  updateRain(dt);      // 雨粒の落下
+  for (const wf of waterFx){ wf.tex.offset.x = (now * 0.000011 + wf.ph) % 1; wf.tex.offset.y = (now * 0.000007 + wf.ph * 1.7) % 1; }   // 水面の波紋を流す
+  if ((frameNo % 12) === 0) renderWxPill();   // 天候ピルは約5Hzで更新（突風で数値がうねる）
   if (state === "aim" || state === "hold" || state === "swing"){ remainEl.textContent = Math.round(distToCup()); greenDistEl.textContent = Math.round(greenDist()); }
   renderer.render(scene, camera);
 }
@@ -2585,6 +2736,8 @@ window.__golf = {
   pattern: () => shot ? (shot.pattern || null) : null,
   camY: () => camera.position.y,
   occFaded: () => occluders.filter(u => u.goal < 1).length,
+  wx: () => weather && { kind: weather.kind, spd: Math.round(weather.spd * 10) / 10, wx: Math.round(weather.wx * 10) / 10, wz: Math.round(weather.wz * 10) / 10, fogFar: Math.round(scene.fog.far) },
+  setWx: (kind) => { rollWeather(kind); applyWeather(); updateBestZone(); renderWxPill(); },
   surf: (x, z) => surfaceAt(x, z),
   snd: () => ({ ac: AC ? AC.state : "none", bgm: bgm.on, step: bgm.step, wind: !!windN, fly: !!flyN, roll: !!rollN }),
   shotSurf: () => shot ? (shot.surf || null) : null,
