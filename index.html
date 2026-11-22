@@ -98,6 +98,8 @@
   #result .big { font-size:26px; font-weight:800; color:#14532d; }
   #result .detail { font-size:15px; color:#33475b; margin-top:8px; }
   #result button { margin-top:16px; padding:10px 26px; font-size:16px; font-weight:700; border:none; border-radius:9px; background:#2e9e57; color:#fff; cursor:pointer; }
+  #result button.sub { background:#e8eef2; color:#33475b; margin-left:8px; }
+  #introHint { position:absolute; left:50%; bottom:19%; transform:translateX(-50%); z-index:15; display:none; background:rgba(10,25,15,.55); color:#fff; font-size:13px; padding:7px 16px; border-radius:999px; pointer-events:none; }
 
   #hint { position:absolute; bottom:calc(6px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
 
@@ -168,8 +170,10 @@
 <div id="result"><div class="card">
   <div class="big" id="resultTitle">カップイン！</div>
   <div class="detail" id="resultDetail"></div>
-  <button id="againBtn">もう一度回る</button>
+  <button id="nextBtn">次のコースへ ▶</button><button id="againBtn" class="sub">もう一度回る</button>
 </div></div>
+
+<div id="introHint">コース紹介中…（タップでスキップ）</div>
 
 <div id="hint">スティック：方向 ／ SHOT：押してる間ゲージが往復、離すと打つ</div>
 </div><!-- /#ui -->
@@ -186,7 +190,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.18.0";
+const PAGE_VER = "0.19.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -578,7 +582,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=180", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=190", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -600,7 +604,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=180", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=190", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -1180,32 +1184,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=180", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=180", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=190", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1269,7 +1273,7 @@ const VIEW_PRESETS = [
   { id:"low",  label:"低い", d:5.5, h:1.7 },
   { id:"high", label:"高い", d:8.0, h:5.2 }
 ];
-let settings = { bag: CLUBS.map((c, i) => i), cam: "random", view: "std", sound: true };
+let settings = { bag: CLUBS.map((c, i) => i), cam: "random", view: "std", sound: true, unlocked: 0 };
 try {
   const s = JSON.parse(localStorage.getItem("fg_settings_v1") || "null");
   if (s){
@@ -1279,8 +1283,14 @@ try {
     if (CAM_PATTERNS.some(p => p.id === s.cam)) settings.cam = s.cam;
     if (VIEW_PRESETS.some(p => p.id === s.view)) settings.view = s.view;
     if (typeof s.sound === "boolean") settings.sound = s.sound;
+    if (Number.isInteger(s.unlocked)) settings.unlocked = Math.max(0, Math.min(COURSES.length - 1, s.unlocked));
   }
 } catch(e) { /* 保存が読めなければ初期値 */ }
+/* コース進行：ホールアウト（ギブアップ含む）で次のコースが開く */
+function unlockNext(){
+  const n = Math.min(COURSES.length - 1, courseIdx + 1);
+  if (n > settings.unlocked){ settings.unlocked = n; saveSettings(); }
+}
 function saveSettings(){ try { localStorage.setItem("fg_settings_v1", JSON.stringify(settings)); } catch(e) {} }
 function viewPreset(){ return VIEW_PRESETS.find(p => p.id === settings.view) || VIEW_PRESETS[0]; }
 
@@ -1363,17 +1373,34 @@ function renderSettings(){
   chipRow(document.getElementById("viewChips"), VIEW_PRESETS.map(p => ({ id:p.id, label:p.label })), settings.view, id => { settings.view = id; saveSettings(); renderSettings(); snapCam = true; });
   document.getElementById("sndOn").checked = settings.sound;
   document.getElementById("sndOff").checked = !settings.sound;
-  // コース選択（ready なコースだけ選べる）
+  // コース選択（解放済みのコースだけ選べる。前のコースをホールアウトすると次が開く）
   const cc = document.getElementById("courseChips");
   cc.innerHTML = "";
   COURSES.forEach((c, i) => {
     const b = document.createElement("button");
+    const locked = i > settings.unlocked;
     b.className = "chip" + (i === courseIdx ? " on" : "");
-    b.textContent = (i + 1) + ". " + c.name + (c.ready ? "" : "（準備中）");
-    if (!c.ready) b.disabled = true;
+    b.textContent = (i + 1) + ". " + c.name + (!c.ready ? "（準備中）" : locked ? "（未開放）" : "");
+    if (!c.ready || locked) b.disabled = true;
     b.addEventListener("click", () => { loadCourse(i); settingsEl.style.display = "none"; });
     cc.appendChild(b);
   });
+}
+/* オープニング：コースをぐるりと一周する全景カメラ（タップでスキップ可） */
+let intro = null;
+const INTRO_LEN = 4.2;
+function startIntro(){
+  const cx = CUP.x / 2, cz = CUP.z / 2;
+  const dist = Math.hypot(CUP.x, CUP.z) || HOLE_LEN;
+  const R = Math.max(55, Math.min(300, dist * 0.58));
+  const base = Math.max(groundH(0, 0), groundH(CUP.x, CUP.z), groundH(cx, cz));
+  intro = { t: 0, cx, cz, R, H: R * 0.50 + 16, base, a0: Math.atan2(-cz, -cx) };
+  document.getElementById("introHint").style.display = "block";
+}
+function endIntro(){
+  if (!intro) return;
+  intro = null;
+  document.getElementById("introHint").style.display = "none";
 }
 /* コース切り替え（v0.12 ではコース1のみ実装済み。景色の組み替えはコース追加時にここへ足す） */
 function loadCourse(i){
@@ -1389,6 +1416,7 @@ function loadCourse(i){
   strokes = 0; strokesEl.textContent = 0;
   state = "aim"; aimOffset = 0; knob.style.transform = "translate(0px,0)";
   selectClub(0); placeChar(); marker.visible = true; updateArrow(); snapCam = true;
+  startIntro();
 }
 document.getElementById("setBtn").addEventListener("click", () => { renderSettings(); settingsEl.style.display = "flex"; });
 document.getElementById("setClose").addEventListener("click", () => { settingsEl.style.display = "none"; });
@@ -1430,7 +1458,8 @@ function stickSet(dx){
   aimOffset = (cl / max) * 0.6;    // ±約34°
   updateArrow();
 }
-stick.addEventListener("pointerdown", e => { stickDrag = true; stick.setPointerCapture(e.pointerId); const r = stick.getBoundingClientRect(); stickSet(e.clientX - r.left - r.width / 2); });
+stick.addEventListener("pointerdown", e => { endIntro(); stickDrag = true; stick.setPointerCapture(e.pointerId); const r = stick.getBoundingClientRect(); stickSet(e.clientX - r.left - r.width / 2); });
+renderer.domElement.addEventListener("pointerdown", () => endIntro());   // 紹介中の画面タップでスキップ
 stick.addEventListener("pointermove", e => { if (stickDrag) { const r = stick.getBoundingClientRect(); stickSet(e.clientX - r.left - r.width / 2); } });
 stick.addEventListener("pointerup", () => { stickDrag = null; });
 stick.addEventListener("pointercancel", () => { stickDrag = null; });
@@ -1733,6 +1762,7 @@ const shotBtn = document.getElementById("shotBtn");
 let snapCam = true;
 const lookCur = new THREE.Vector3(0, 0, -10);
 function pressStart(){
+  if (intro){ endIntro(); return; }   // 紹介中はタップでスキップ（打たない）
   if (state !== "aim") return;
   audio();
   state = "hold";
@@ -1936,7 +1966,9 @@ function holed(){
   const d = strokes - PAR;
   const label = d <= -2 ? "イーグル！" : d === -1 ? "バーディー！" : d === 0 ? "パー" : d === 1 ? "ボギー" : "+" + d;
   document.getElementById("resultTitle").textContent = "カップイン！ " + label;
-  document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打でクリア。合計 " + totalScore + " 打";
+  document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打でクリア。合計 " + totalScore + " 打" + (courseIdx === COURSES.length - 1 ? "　全コース制覇！" : "");
+  unlockNext();
+  document.getElementById("nextBtn").style.display = courseIdx < COURSES.length - 1 ? "" : "none";
   document.getElementById("result").style.display = "flex";
 }
 /* ギブアップ：打数＋ペナルティ10でホールアウト（2026-11-22 ユーザー決定、設定画面から実行） */
@@ -1949,8 +1981,15 @@ function giveUp(){
   if (arrow) arrow.visible = false;
   document.getElementById("resultTitle").textContent = "ギブアップ（+10）";
   document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打＋ペナルティ10 ＝ " + total + " 打で記録。合計 " + totalScore + " 打";
+  unlockNext();
+  document.getElementById("nextBtn").style.display = courseIdx < COURSES.length - 1 ? "" : "none";
   document.getElementById("result").style.display = "flex";
 }
+document.getElementById("nextBtn").addEventListener("click", () => {
+  document.getElementById("result").style.display = "none";
+  loadCourse(courseIdx + 1);
+  showMsg("", 0);
+});
 document.getElementById("againBtn").addEventListener("click", () => {
   document.getElementById("result").style.display = "none";
   ball.position.set(0, groundH(0, 0) + BALL_R, 0);
@@ -2144,6 +2183,19 @@ function animate(){
       }
     }
   }
+  // オープニングの周回カメラ：コース中心を1周し、終盤で通常のエイムカメラへ滑らかに寄せる
+  if (intro){
+    intro.t += dt;
+    const p = Math.min(1, intro.t / INTRO_LEN);
+    const ang = intro.a0 + p * Math.PI * 2;
+    const R = intro.R * (1 - 0.22 * p);
+    const ox = intro.cx + Math.cos(ang) * R, oz = intro.cz + Math.sin(ang) * R;
+    const oy = Math.max(groundH(ox, oz) + 8, intro.base + intro.H * (1 - p * 0.55));
+    const b = smooth01(0.62, 1, p);
+    camera.position.lerpVectors(new THREE.Vector3(ox, oy, oz), camera.position, b);
+    lookCur.lerpVectors(new THREE.Vector3(intro.cx, intro.base + 3, intro.cz), lookCur, b);
+    if (p >= 1) endIntro();
+  }
   camera.lookAt(lookCur);
   updateOccluders();   // カメラとキャラの間に入った建物・木・岩をスケルトン表示に
   if (state === "aim" || state === "hold" || state === "swing") remainEl.textContent = Math.round(distToCup());
@@ -2187,6 +2239,7 @@ document.getElementById("splash").addEventListener("pointerdown", e => {
   e.preventDefault();
   audio();   // このタップを合図に BGM・風の音を開始する
   document.getElementById("splash").classList.add("hide");
+  startIntro();   // 最初のコースも全景カメラから始める
 });
 
 window.__golf = {
@@ -2215,7 +2268,10 @@ window.__golf = {
   course: () => courseIdx,
   total: () => totalScore,
   giveUp: () => giveUp(),
-  loadCourse: i => loadCourse(i)
+  loadCourse: i => loadCourse(i),
+  skipIntro: () => endIntro(),
+  intro: () => !!intro,
+  unlocked: () => settings.unlocked
 };
 </script>
 </body>
