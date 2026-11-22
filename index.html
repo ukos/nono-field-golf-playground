@@ -331,11 +331,12 @@ function setCharaTex(tex){
 new THREE.TextureLoader().load("golfer.png", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
-  if (state === "aim") setCharaTex(texStand);
+  if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
 new THREE.TextureLoader().load("swing_address.png", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
+  if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
 new THREE.TextureLoader().load("swing_takeback.png", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
@@ -514,27 +515,30 @@ function pressStart(){
   needle.style.display = "block";
   shotBtn.classList.add("hold");
   if (arrow) arrow.visible = true;
-  // 押した瞬間：アドレス絵（右向き・ボールに正対した構え）に切り替え、クラブがボールに届いて見えるようボール側へ少し寄せる
+  // 押した瞬間：アドレス絵（右向き・ボールに正対した構え）。狙いの段階からアドレス絵なので、絵はそのまま。
   setCharaTex(texAddress);   // 読めていなければ立ち絵のまま
   holdStage = 0;
   seqScale = (CLUBS[clubIdx].name === "PT") ? 0.6 : 1;   // パターはスイングシーケンス全体を時間×0.6で短縮
-  const toBall = new THREE.Vector3(ball.position.x - chara.position.x, 0, ball.position.z - chara.position.z);
-  if (toBall.lengthSq() > 0.0001){
-    toBall.normalize();
-    chara.position.addScaledVector(toBall, 0.25);
-    charShadow.position.set(chara.position.x, 0.03, chara.position.z);
-  }
 }
 function releaseShot(){
   // 離した瞬間にゲージ結果は確定。ここからは "swing" 状態で
   // ダウンスイング（0.07秒）→インパクト（その瞬間に fire）→フォロースルー→フィニッシュと進む。
   if (state !== "hold") return;
+  needle.style.display = "none";
+  shotBtn.classList.remove("hold");
+  if (CLUBS[clubIdx].name === "PT"){
+    // パットはテークバック〜フォロースルーなし（2026-11-22 ユーザー指示）：アドレスとインパクトの2枚だけ。
+    // 離した瞬間にインパクト絵で即発射し、そのまま保持する（swingStage=3 で後段のポーズ進行を止める）。
+    swingP = needlePos;
+    swingStage = 3;
+    setCharaTex(texImpact);
+    fire(swingP);
+    return;
+  }
   state = "swing";
   swingT = 0;
   swingP = needlePos;
   swingStage = 0;
-  needle.style.display = "none";
-  shotBtn.classList.remove("hold");
   setCharaTex(texDown);   // ダウンスイング絵
 }
 shotBtn.addEventListener("pointerdown", e => { e.preventDefault(); pressStart(); });
@@ -630,12 +634,19 @@ document.getElementById("againBtn").addEventListener("click", () => {
   showMsg("", 0);
 });
 function placeChar(){
-  setCharaTex(texStand);   // 立ち絵に戻す
+  // 打つ前は正面（カメラ側）ではなく、打つ方向を向いたアドレス絵で構える（2026-11-22 ユーザー指示）
+  setCharaTex(texAddress || texStand);
   const dx = CUP.x - ball.position.x, dz = CUP.z - ball.position.z;
   const L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
   const lx = uz, lz = -ux;   // 進行方向の左
   chara.visible = true; charShadow.visible = true;
   chara.position.set(ball.position.x + lx * 0.62, 0.70, ball.position.z + lz * 0.62);
+  // アドレス絵のクラブがボールに届いて見えるよう、ボール側へ少し寄せる（従来は pressStart で実施）
+  const toBall = new THREE.Vector3(ball.position.x - chara.position.x, 0, ball.position.z - chara.position.z);
+  if (toBall.lengthSq() > 0.0001){
+    toBall.normalize();
+    chara.position.addScaledVector(toBall, 0.25);
+  }
   charShadow.position.set(chara.position.x, 0.03, chara.position.z);
 }
 function suggestClub(){
@@ -659,10 +670,12 @@ function animate(){
     const ph = el % 2;
     needlePos = ph < 1 ? ph : 2 - ph;
     needle.style.left = (needlePos * 100) + "%";
-    // 押している間：アドレス（押した瞬間）→ +0.18秒 テークバック → +0.42秒 トップで保持
+    // 押している間：アドレス（押した瞬間）→ +0.18秒 テークバック → +0.42秒 トップで保持。パットはアドレスのまま（ポーズ進行なし）
     const held = (now - holdStart) / 1000;
-    if (holdStage === 0 && held >= 0.18 * seqScale){ setCharaTex(texTakeback); holdStage = 1; }
-    else if (holdStage === 1 && held >= 0.42 * seqScale){ setCharaTex(texBack); holdStage = 2; }
+    if (CLUBS[clubIdx].name !== "PT"){
+      if (holdStage === 0 && held >= 0.18 * seqScale){ setCharaTex(texTakeback); holdStage = 1; }
+      else if (holdStage === 1 && held >= 0.42 * seqScale){ setCharaTex(texBack); holdStage = 2; }
+    }
   }
   // スイング（離した後〜インパクト）：ダウンスイング絵で 0.07秒 → インパクト絵に切り替えた瞬間に発射
   if (state === "swing"){
