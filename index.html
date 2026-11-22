@@ -186,7 +186,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.16.0";
+const PAGE_VER = "0.17.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -226,12 +226,12 @@ const COURSES = [
   { name:"砂浜",         par:4, len:300, ready:true },
   { name:"山の上",       par:5, len:450, ready:true },
   { name:"都会（深夜）", par:4, len:340, ready:true, cupX:-150, cupZ:190 },
-  { name:"機械遺跡",     par:4, len:330 },
-  { name:"ジャングル",   par:4, len:310 },
-  { name:"白嶺の雪山",   par:4, len:370 },
-  { name:"灼砂の砂漠",   par:5, len:460 },
-  { name:"大渓谷",       par:3, len:180 },
-  { name:"霞の竹林",     par:4, len:290 },
+  { name:"機械遺跡",     par:4, len:330, ready:true },
+  { name:"ジャングル",   par:4, len:310, ready:true },
+  { name:"白嶺の雪山",   par:4, len:370, ready:true },
+  { name:"灼砂の砂漠",   par:5, len:460, ready:true },
+  { name:"大渓谷",       par:3, len:180, ready:true },
+  { name:"霞の竹林",     par:4, len:290, ready:true },
   { name:"紅蓮の火山",   par:4, len:390 },
   { name:"湿原",         par:4, len:280 },
   { name:"黄昏の地",     par:5, len:520 }
@@ -443,6 +443,75 @@ function surfNight(x, z){
   if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
   return nightRoad(x, z) ? "asphalt" : "rough";
 }
+/* ---- コース10「機械遺跡」：石床はよく転がる。柱と歯車の障害物 ---- */
+function heightRuins(x, z){
+  const roll = 0.7 * Math.sin(x * 0.04 + 0.3) * Math.sin(z * 0.03 + 1.1) + 0.4 * Math.sin(x * 0.09) * Math.sin(z * 0.06);
+  const f = Math.min(smooth01(10, 24, Math.hypot(x, z)), smooth01(14, 28, Math.hypot(x - CUP.x, z - CUP.z)));
+  return roll * f;
+}
+function surfRuins(x, z){
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x) <= 20 && z <= 35 && z >= -(HOLE_LEN + 15)) return "stone";
+  return "rough";
+}
+/* ---- コース11「ジャングル」：木の密度最大、フェアウェイは幅28mと最狭 ---- */
+function heightJungle(x, z){
+  const roll = 1.2 * Math.sin(x * 0.03 + 2.0) * Math.sin(z * 0.022 + 0.6) + 0.6 * Math.sin(x * 0.08) * Math.sin(z * 0.05 + 1.4);
+  const f = Math.min(smooth01(10, 24, Math.hypot(x, z)), smooth01(14, 28, Math.hypot(x - CUP.x, z - CUP.z)));
+  return roll * f;
+}
+function surfJungle(x, z){
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x) <= 14 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
+  return "rough";
+}
+/* ---- コース12「白嶺の雪山」：全面雪。転がらないのでキャリーで止める ---- */
+function heightSnow(x, z){
+  const roll = 2.2 * Math.sin(x * 0.025 + 0.9) * Math.sin(z * 0.018 + 0.2) + 1.0 * Math.sin(x * 0.06) * Math.sin(z * 0.045 + 1.8);
+  const f = Math.min(smooth01(10, 26, Math.hypot(x, z)), smooth01(14, 30, Math.hypot(x - CUP.x, z - CUP.z)));
+  return roll * f;
+}
+function surfSnow(x, z){
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  return "snow";
+}
+/* ---- コース13「灼砂の砂漠」：全面砂＋砂丘。オアシスは水ハザード ---- */
+function heightDesert(x, z){
+  const dune = 2.6 * Math.sin(x * 0.021 + 0.4) * Math.sin(z * 0.017 + 1.0) + 1.2 * Math.sin(x * 0.05 + 2.2) * Math.sin(z * 0.04);
+  let f = Math.min(smooth01(10, 26, Math.hypot(x, z)), smooth01(14, 30, Math.hypot(x - CUP.x, z - CUP.z)));
+  f = Math.min(f, smooth01(16, 34, Math.hypot(x - 52, z + 215)));   // オアシス付近は平らに
+  return dune * f;
+}
+function surfDesert(x, z){
+  if (inLake(x, z)) return "water";
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  return "sand";
+}
+/* ---- コース14「大渓谷」：狭い谷底、両側は崖。中盤に川（キャリー必須） ---- */
+function heightCanyon(x, z){
+  const cliff = 26 * smooth01(17, 32, Math.abs(x));
+  let roll = 0.7 * Math.sin(z * 0.03) * (1 - smooth01(14, 24, Math.abs(x)));
+  roll *= smooth01(10, 18, Math.abs(z + 100));   // 川の帯は平らに
+  const f = Math.min(smooth01(10, 24, Math.hypot(x, z)), smooth01(14, 28, Math.hypot(x - CUP.x, z - CUP.z)));
+  return cliff + roll * f;
+}
+function surfCanyon(x, z){
+  if (inLake(x, z)) return "water";
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x) <= 13 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
+  return "rough";
+}
+/* ---- コース15「霞の竹林」：竹の密生＋霧で視界が利かない ---- */
+function heightBamboo(x, z){
+  const roll = 1.0 * Math.sin(x * 0.03 + 1.2) * Math.sin(z * 0.024 + 0.5) + 0.5 * Math.sin(x * 0.07) * Math.sin(z * 0.055 + 2.4);
+  const f = Math.min(smooth01(10, 24, Math.hypot(x, z)), smooth01(14, 28, Math.hypot(x - CUP.x, z - CUP.z)));
+  return roll * f;
+}
+function surfBamboo(x, z){
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x) <= 16 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
+  return "rough";
+}
 
 /* ============ コース構築 ============ */
 function buildGround(def){
@@ -463,7 +532,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=160", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=170", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -485,7 +554,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=160", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=170", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -729,6 +798,113 @@ function decorateNight(){
   car("x", -196, -60, -1, 10, "taxi");
   car("x", -184, -140, 1, 7.5, "truck");
 }
+/* ---- 装飾：コース10「機械遺跡」 ---- */
+function decorateRuins(){
+  const stoneM = new THREE.MeshLambertMaterial({ color:0x9a958c });
+  const darkM = new THREE.MeshLambertMaterial({ color:0x5d594f });
+  function pillar(x, z, hgt, broken){
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, hgt, 8), stoneM);
+    p.position.set(x, groundH(x, z) + hgt / 2, z);
+    courseGroup.add(p); regOccluder(p);
+    if (!broken){
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.7, 3.4), darkM);
+      cap.position.set(x, groundH(x, z) + hgt + 0.35, z);
+      courseGroup.add(cap); regOccluder(cap);
+    }
+    colliders.push({ x, z, r:1.5, gr:1.4, h:hgt });
+  }
+  function gear(x, z, r){
+    const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.9, 12), darkM);
+    g.rotation.x = Math.PI / 2; g.rotation.z = 0.4;
+    g.position.set(x, groundH(x, z) + r * 0.75, z);
+    courseGroup.add(g); regOccluder(g);
+    colliders.push({ x, z, r:r * 0.95, gr:r * 0.95, h:r * 1.5 });
+  }
+  const R = rng(1010);
+  for (let z = -30; z >= -(HOLE_LEN - 30); z -= 42 + R() * 16){
+    pillar(-(24 + R() * 6), z, 6 + R() * 5, R() < 0.35);
+    pillar(24 + R() * 6, z - 14, 6 + R() * 5, R() < 0.35);
+    if (R() < 0.55) gear((R() < 0.5 ? -1 : 1) * (27 + R() * 10), z - 24, 2.2 + R() * 1.4);
+    if (R() < 0.4) rock((R() < 0.5 ? -1 : 1) * (12 + R() * 22), z - 8, 0.8 + R() * 0.7);   // 瓦礫
+  }
+  pillar(-8, CUP.z + 16, 9, false); pillar(8, CUP.z + 16, 9, false);       // グリーン手前の門柱
+}
+/* ---- 装飾：コース11「ジャングル」 ---- */
+function decorateJungle(){
+  const R = rng(1111);
+  for (let z = 2; z >= -(HOLE_LEN + 18); z -= 5 + R() * 5){
+    for (const side of [-1, 1]){
+      if (R() < 0.88) tree(side * (19 + R() * 42), z - R() * 4, 1.1 + R() * 0.9);         // 密林（大きめ）
+      if (R() < 0.3) tree(side * (15.5 + R() * 3), z - 2, 0.9 + R() * 0.6);               // フェアウェイ際まで迫る
+    }
+    if (R() < 0.16) tree((R() < 0.5 ? -1 : 1) * (4 + R() * 8), z - 3, 0.85 + R() * 0.5);  // ときどきフェアウェイ内にも
+  }
+  for (let i = 0; i < 8; i++) tree(-46 + R() * 92, CUP.z - 15 - R() * 10, 1.1 + R() * 0.8);
+}
+/* 竹の株（細い幹の束＋笹の天蓋）。当たり判定は株の円で1つ */
+function bamboo(x, z, s){
+  const g = new THREE.Group();
+  const stemM = new THREE.MeshLambertMaterial({ color:0x5d8a3c });
+  const leafM = new THREE.MeshLambertMaterial({ color:0x3f7031 });
+  const R = rng(Math.floor(x * 13 + z * 7) + 5000);
+  for (let i = 0; i < 4; i++){
+    const sx = (R() - 0.5) * 1.1, sz = (R() - 0.5) * 1.1, sh = (7 + R() * 2.5) * s;
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * s, 0.13 * s, sh, 5), stemM);
+    st.position.set(sx, sh / 2, sz); g.add(st);
+    const lf = new THREE.Mesh(new THREE.ConeGeometry(1.15 * s, 2.4 * s, 6), leafM);
+    lf.position.set(sx, sh + 0.8 * s, sz); g.add(lf);
+  }
+  g.position.set(x, groundH(x, z), z);
+  courseGroup.add(g); regOccluder(g);
+  colliders.push({ x, z, r:1.0 * s, gr:0.8 * s, h:9 * s });
+}
+/* ---- 装飾：コース13「灼砂の砂漠」 ---- */
+function decorateDesert(){
+  flatPlane(46, 60, new THREE.MeshPhongMaterial({ color:0x2f8fd0, transparent:true, opacity:0.85, shininess:120 }), 52, 0.05, -215);   // オアシス
+  const R = rng(1313);
+  for (let i = 0; i < 5; i++) tree(34 + R() * 8, -196 - R() * 38, 0.9 + R() * 0.4);        // オアシスの木陰
+  for (let z = -12; z >= -(HOLE_LEN + 10); z -= 18 + R() * 16){
+    for (const side of [-1, 1]){
+      if (R() < 0.5) rock(side * (30 + R() * 40), z, 0.8 + R() * 1.1);
+      else if (R() < 0.22) tree(side * (34 + R() * 30), z - 6, 0.7 + R() * 0.4);
+    }
+  }
+}
+/* ---- 装飾：コース14「大渓谷」 ---- */
+function decorateCanyon(){
+  flatPlane(30, 13, new THREE.MeshPhongMaterial({ color:0x2f8fd0, transparent:true, opacity:0.85, shininess:120 }), 0, 0.06, -100);   // 川
+  const R = rng(1414);
+  for (let z = -8; z >= -(HOLE_LEN + 8); z -= 13 + R() * 10){
+    for (const side of [-1, 1]){
+      if (R() < 0.6) rock(side * (19 + R() * 8), z, 0.9 + R() * 1.0);          // 崖際の岩
+      if (R() < 0.4) tree(side * (44 + R() * 26), z - 5, 0.9 + R() * 0.6);     // 崖の上の木
+    }
+  }
+  rock(-9, -88, 1.1); rock(10, -114, 1.0);                                    // 川の前後の岩
+}
+/* ---- 装飾：コース15「霞の竹林」 ---- */
+function decorateBamboo(){
+  const R = rng(1515);
+  for (let z = 4; z >= -(HOLE_LEN + 16); z -= 6 + R() * 5){
+    for (const side of [-1, 1]){
+      if (R() < 0.85) bamboo(side * (21 + R() * 40), z - R() * 4, 0.9 + R() * 0.35);
+      if (R() < 0.3) bamboo(side * (17.5 + R() * 3), z - 3, 0.8 + R() * 0.3);
+    }
+    if (R() < 0.13) bamboo((R() < 0.5 ? -1 : 1) * (5 + R() * 9), z - 4, 0.85 + R() * 0.3);   // ときどき内側にも
+  }
+  for (let i = 0; i < 7; i++) bamboo(-44 + R() * 88, CUP.z - 14 - R() * 10, 0.95 + R() * 0.3);
+}
+/* ---- 装飾：コース12「白嶺の雪山」 ---- */
+function decorateSnow(){
+  const R = rng(1212);
+  for (let z = -4; z >= -(HOLE_LEN + 14); z -= 12 + R() * 9){
+    for (const side of [-1, 1]){
+      if (R() < 0.62) tree(side * (30 + R() * 34), z, 0.9 + R() * 0.7);
+      else if (R() < 0.55) rock(side * (28 + R() * 30), z - 5, 0.8 + R() * 0.9);
+    }
+  }
+  for (let i = 0; i < 6; i++) tree(-52 + R() * 104, CUP.z - 15 - R() * 10, 1 + R() * 0.6);
+}
 /* ---- コース構築テーブル ---- */
 const COURSE_BUILD = [
   { tex:"tex/gtex_grass.png", repX:46, repY:82, sky:0x9fd3ee, sun:0xfff2d8, sunI:0.75,
@@ -767,7 +943,31 @@ const COURSE_BUILD = [
   { tex:"tex/gtex_stonefloor_light.png", repX:30, repY:60, sky:0x141c33, sun:0x8fb4ff, sunI:0.35, hemi:0.5,
     h:heightFlat, surf:surfNight,
     tintAt:(x, z) => nightRoad(x, z) ? [0.62, 0.66, 0.8] : [0.34, 0.38, 0.52],
-    decorate:decorateNight }
+    decorate:decorateNight },
+  { tex:"tex/gtex_stonefloor_dark.png", repX:30, repY:55, sky:0xb8c4cc, sun:0xe8ecf0, sunI:0.6,
+    h:heightRuins, surf:surfRuins,
+    tintAt:(x, z) => (Math.abs(x) <= 20 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1, 1, 1] : [0.72, 0.7, 0.66],
+    decorate:decorateRuins },
+  { tex:"tex/gtex_forest.png", repX:46, repY:79, sky:0x8fd0c8, sun:0xfff2d8, sunI:0.65,
+    h:heightJungle, surf:surfJungle,
+    tintAt:(x, z) => (Math.abs(x) <= 14 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1, 1, 1] : [0.58, 0.64, 0.55],
+    decorate:decorateJungle },
+  { tex:"tex/gtex_snow.png", repX:46, repY:85, sky:0xd6e6f2, sun:0xffffff, sunI:0.85,
+    h:heightSnow, surf:surfSnow,
+    tintAt:(x, z) => [1, 1, 1],
+    decorate:decorateSnow },
+  { tex:"tex/gtex_sand.png", repX:46, repY:100, sky:0xa8d4ea, sun:0xfff6da, sunI:0.95,
+    h:heightDesert, surf:surfDesert, waters:[{ x0:29, x1:75, z0:-245, z1:-185 }],
+    tintAt:(x, z) => [1, 1, 1],
+    decorate:decorateDesert },
+  { tex:"tex/gtex_rocky.png", repX:46, repY:66, sky:0x9fd3ee, sun:0xfff2d8, sunI:0.8,
+    h:heightCanyon, surf:surfCanyon, waters:[{ x0:-16, x1:16, z0:-107, z1:-93 }],
+    tintAt:(x, z) => (Math.abs(x) <= 13 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [0.92, 0.95, 0.82] : [1, 1, 1],
+    decorate:decorateCanyon },
+  { tex:"tex/gtex_forest.png", repX:46, repY:74, sky:0xcfe0da, sun:0xf2f5e8, sunI:0.55, fogNear:40, fogFar:280,
+    h:heightBamboo, surf:surfBamboo,
+    tintAt:(x, z) => (Math.abs(x) <= 16 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1.05, 1.05, 0.95] : [0.72, 0.78, 0.68],
+    decorate:decorateBamboo }
 ];
 function buildCourse(i){
   const def = COURSE_BUILD[i];
@@ -783,6 +983,7 @@ function buildCourse(i){
   curH = def.h; curSurfFn = def.surf;
   curWaterFn = def.waterFn || ((x, z) => (def.waters || []).some(w => x > w.x0 && x < w.x1 && z < w.z1 && z > w.z0));
   scene.background.set(def.sky); scene.fog.color.set(def.sky);
+  scene.fog.near = def.fogNear || 180; scene.fog.far = def.fogFar || 700;
   sun.color.set(def.sun); sun.intensity = def.sunI;
   hemi.intensity = def.hemi != null ? def.hemi : 0.95;
   movers = [];
@@ -855,35 +1056,35 @@ function setCharaTex(tex, h, cy){
 /* フォロー／フィニッシュ（背面絵）はキャンバスに占める人物の割合が他と違う（フォローは
    クラブを描き切るためキャンバスが縦長）ので、人物の見かけの大きさがアドレスと揃うよう
    表示高さと中心位置を個別に較正する（2026-11-22 v0.7.1）。 */
-const FOLLOW_H = 1.721, FOLLOW_Y = 0.868;   // v0.11.8：10°回転でキャンバス 2836x2847 化、人物縦スパン 2020px で再較正
+const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=160", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=160", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=170", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -925,9 +1126,12 @@ const SURF = {
   fairway: { bounce:1.0,  roll:1.0,  lie:1.0 },    // 標準
   rough:   { bounce:0.5,  roll:0.45, lie:0.9 },    // 跳ねが死に、草で止まる。次のショットも少し飛ばない
   sand:    { bounce:0.15, roll:0.10, lie:0.55 },   // ほぼ跳ねず、めり込んで止まる。次のショットは大きく飛距離が落ちる
-  asphalt: { bounce:1.3,  roll:1.4,  lie:1.0 }     // 都会コースの道路：よく跳ね、よく転がる
+  asphalt: { bounce:1.3,  roll:1.4,  lie:1.0 },    // 都会コースの道路：よく跳ね、よく転がる
+  stone:   { bounce:1.4,  roll:1.5,  lie:1.0 },    // 遺跡の石床：硬くて一番転がる
+  snow:    { bounce:0.3,  roll:0.05, lie:0.85 },   // 雪：跳ねず転がらず、キャリーで止める
+  marsh:   { bounce:0.1,  roll:0.05, lie:0.6 }     // 湿地：めり込んで止まる。次のショットも飛ばない
 };
-const LIE_LABEL = { fairway:"ライ：フェアウェイ", rough:"ライ：ラフ（飛距離×0.9）", sand:"ライ：砂（飛距離×0.55）", green:"ライ：グリーン", water:"ライ：―", asphalt:"ライ：アスファルト" };
+const LIE_LABEL = { fairway:"ライ：フェアウェイ", rough:"ライ：ラフ（飛距離×0.9）", sand:"ライ：砂（飛距離×0.55）", green:"ライ：グリーン", water:"ライ：―", asphalt:"ライ：アスファルト", stone:"ライ：石床（よく転がる）", snow:"ライ：雪（飛距離×0.85）", marsh:"ライ：湿地（飛距離×0.6）" };
 
 /* ============ 設定（localStorage に保存） ============ */
 const CAM_PATTERNS = [
