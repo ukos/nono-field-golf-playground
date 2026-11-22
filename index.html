@@ -25,6 +25,15 @@
   #ui > * { pointer-events:none; }
   #clubList, #setBtn, #stick, #shotBtn, #result, #settings { pointer-events:auto; }
 
+  /* ロゴ画面（起動時スプラッシュ、2026-11-22 ユーザー指示） */
+  #splash { position:fixed; top:0; left:0; width:100%; height:100vh; height:100dvh; height:var(--apph, 100dvh); z-index:50; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4vh; cursor:pointer; transition:opacity .45s ease; }
+  #splash.hide { opacity:0; pointer-events:none; }
+  #splash img { width:min(76vw, 400px); height:auto; animation:splashIn .7s ease both; }
+  @keyframes splashIn { from { opacity:0; transform:scale(.93); } to { opacity:1; transform:scale(1); } }
+  #splashTap { color:#1d5c38; font-size:17px; font-weight:800; letter-spacing:.22em; animation:tapBlink 1.6s ease-in-out infinite; }
+  @keyframes tapBlink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+  #splashVer { color:#8aa393; font-size:11px; letter-spacing:.12em; }
+
   /* 上部情報 */
   #topbar { position:absolute; top:8px; left:10px; z-index:10; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.55); pointer-events:none; }
   #topbar .hole { font-size:17px; font-weight:700; letter-spacing:.02em; }
@@ -159,13 +168,19 @@
 <div id="hint">スティック：方向 ／ SHOT：押してる間ゲージが往復、離すと打つ</div>
 </div><!-- /#ui -->
 
+<div id="splash">
+  <img src="logo.jpg" alt="FIELD GOLF HD-2D">
+  <div id="splashTap">TAP TO START</div>
+  <div id="splashVer">PROTOTYPE</div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 "use strict";
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.10.0";
+const PAGE_VER = "0.11.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -373,7 +388,7 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
-  new THREE.TextureLoader().load("flag.png?v=100", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=110", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -434,32 +449,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.747, FOLLOW_Y = 0.872;   // 人物割合 1990/2847 → アドレス（1990/2273）に換算
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=100", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=100", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=110", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1290,6 +1305,14 @@ if (window.visualViewport) window.visualViewport.addEventListener("resize", onRe
 onResize();
 
 /* デバッグ／検証用API */
+/* ============ ロゴ画面 ============ */
+document.getElementById("splashVer").textContent = "PROTOTYPE v" + PAGE_VER;
+document.getElementById("splash").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  audio();   // このタップを合図に BGM・風の音を開始する
+  document.getElementById("splash").classList.add("hide");
+});
+
 window.__golf = {
   state: () => state,
   strokes: () => strokes,
