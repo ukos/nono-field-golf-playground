@@ -186,7 +186,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.15.0";
+const PAGE_VER = "0.16.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -225,7 +225,7 @@ const COURSES = [
   { name:"高原",         par:4, len:360, ready:true, air:1.08 },
   { name:"砂浜",         par:4, len:300, ready:true },
   { name:"山の上",       par:5, len:450, ready:true },
-  { name:"都会（深夜）", par:4, len:340 },
+  { name:"都会（深夜）", par:4, len:340, ready:true, cupX:-150, cupZ:190 },
   { name:"機械遺跡",     par:4, len:330 },
   { name:"ジャングル",   par:4, len:310 },
   { name:"白嶺の雪山",   par:4, len:370 },
@@ -269,7 +269,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fd3ee);
 scene.fog = new THREE.Fog(0x9fd3ee, 180, 700);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 1500);
-scene.add(new THREE.HemisphereLight(0xcfeaff, 0x4a7c43, 0.95));
+const hemi = new THREE.HemisphereLight(0xcfeaff, 0x4a7c43, 0.95);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2d8, 0.75);
 sun.position.set(60, 120, 40); scene.add(sun);
 
@@ -332,6 +333,7 @@ function inLake(x, z){ return curWaterFn(x, z); }
 let curSurfFn = (x, z) => "fairway";
 function surfaceAt(x, z){ return curSurfFn(x, z); }
 const colliders = [];   // 円形 { x, z, r（飛行）, gr（転がり）, h } ／ 箱形 { x, z, hw, hd, h }（建物）
+let movers = [];        // 動く障害物（車）：{ g, axis, lane, pos, dirSign, speed, col, min, max }
 let courseGroup = null;
 
 /* ---- コース1「草原」の地形・地面種別 ---- */
@@ -430,6 +432,17 @@ function surfMount(x, z){
   if (Math.abs(x) <= 20 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
+/* ---- コース9「都会（深夜）」：直角に曲がる道路、車が往来する ---- */
+function heightFlat(x, z){ return 0; }
+function nightRoad(x, z){
+  const leg1 = Math.abs(x) <= 17 && z <= 35 && z >= -207;
+  const leg2 = Math.abs(z + 190) <= 17 && x <= 10 && x >= -190;
+  return leg1 || leg2;
+}
+function surfNight(x, z){
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  return nightRoad(x, z) ? "asphalt" : "rough";
+}
 
 /* ============ コース構築 ============ */
 function buildGround(def){
@@ -450,7 +463,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=150", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=160", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -472,7 +485,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=150", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=160", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -504,6 +517,31 @@ function rock(x, z, s){
   r.scale.y = 0.7; courseGroup.add(r);
   regOccluder(r);
   colliders.push({ x, z, r: 1.35 * s, gr: 1.35 * s, h: 1.7 * s });
+}
+/* 動く車（タクシー／トラック）。モデルは前方 -z で作り、軸と進行方向で回す */
+function car(axis, lane, start, dirSign, speed, kind){
+  const g = new THREE.Group();
+  const taxi = kind === "taxi";
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, taxi ? 0.85 : 1.9, 4.6),
+    new THREE.MeshLambertMaterial({ color: taxi ? 0xf2b437 : 0xd8dde2 }));
+  body.position.y = taxi ? 0.85 : 1.35; g.add(body);
+  if (taxi){
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 2.2), new THREE.MeshLambertMaterial({ color:0x33404d }));
+    cab.position.set(0, 1.6, -0.2); g.add(cab);
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.3, 0.45),
+      new THREE.MeshLambertMaterial({ color:0xfff2b0, emissive:0x77691f }));
+    sign.position.set(0, 2.1, -0.2); g.add(sign);
+  } else {
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.15, 1.2), new THREE.MeshLambertMaterial({ color:0x4a5866 }));
+    cab.position.set(0, 0.9, -2.0); g.add(cab);
+  }
+  g.rotation.y = axis === "z" ? (dirSign < 0 ? 0 : Math.PI) : (dirSign < 0 ? Math.PI / 2 : -Math.PI / 2);
+  if (axis === "z") g.position.set(lane, 0, start); else g.position.set(start, 0, lane);
+  courseGroup.add(g);
+  const col = axis === "z" ? { x:lane, z:start, hw:1.0, hd:2.4, h:3.0 } : { x:start, z:lane, hw:2.4, hd:1.0, h:3.0 };
+  colliders.push(col);
+  movers.push({ g, axis, pos:start, dirSign, speed, col, min: axis === "z" ? -208 : -170, max: 18 });
+  return g;
 }
 function building(x, z, w, d, h, color){
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
@@ -654,6 +692,43 @@ function decorateMount(){
   regOccluder(g);
   colliders.push({ x:-3.4, z:CUP.z - 9, r:0.45, gr:0.45, h:6.4 }, { x:3.4, z:CUP.z - 9, r:0.45, gr:0.45, h:6.4 });
 }
+/* ---- 装飾：コース9「都会（深夜）」 ---- */
+function decorateNight(){
+  const cols = [0x2c3644, 0x36404e, 0x28323e, 0x3a4450, 0x303a48];
+  const R = rng(909);
+  for (let z = 6; z >= -158; z -= 23 + R() * 6){                       // 第1レグ両側
+    for (const side of [-1, 1]){
+      if (R() < 0.1) continue;
+      const bw = 13 + R() * 8, bd = 13 + R() * 8, bh = 16 + R() * 38;
+      building(side * (31 + R() * 9 + bw / 2), z - R() * 4, bw, bd, bh, cols[Math.floor(R() * cols.length)]);
+    }
+  }
+  for (let x = -34; x >= -186; x -= 23 + R() * 6){                     // 第2レグ両側
+    for (const side of [-1, 1]){
+      if (R() < 0.1) continue;
+      const bw = 13 + R() * 8, bd = 13 + R() * 8, bh = 16 + R() * 38;
+      building(x - R() * 4, -190 + side * (31 + R() * 9 + bd / 2), bw, bd, bh, cols[Math.floor(R() * cols.length)]);
+    }
+  }
+  // 街灯
+  const poleM = new THREE.MeshLambertMaterial({ color:0x222a33 });
+  const lampM = new THREE.MeshLambertMaterial({ color:0xffe9a8, emissive:0x8a6f1e });
+  function streetlight(x, z){
+    const g = new THREE.Group();
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 5, 6), poleM); p.position.y = 2.5; g.add(p);
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), lampM); s.position.y = 5.05; g.add(s);
+    g.position.set(x, 0, z); courseGroup.add(g);
+    colliders.push({ x, z, r:0.25, gr:0.25, h:5 });
+  }
+  for (let z = -12; z >= -176; z -= 41){ streetlight(z % 82 === -12 ? 15 : -15, z); }
+  for (let x = -44; x >= -168; x -= 41){ streetlight(x, -175); }
+  // 往来する車（当たると跳ね返る）
+  car("z", -6, -40, -1, 11, "taxi");
+  car("z", 6, -150, 1, 8, "truck");
+  car("z", -6, -175, -1, 13, "taxi");
+  car("x", -196, -60, -1, 10, "taxi");
+  car("x", -184, -140, 1, 7.5, "truck");
+}
 /* ---- コース構築テーブル ---- */
 const COURSE_BUILD = [
   { tex:"tex/gtex_grass.png", repX:46, repY:82, sky:0x9fd3ee, sun:0xfff2d8, sunI:0.75,
@@ -688,7 +763,11 @@ const COURSE_BUILD = [
   { tex:"tex/gtex_rocky.png", repX:46, repY:91, sky:0x9fd3ee, sun:0xfff2d8, sunI:0.8,
     h:heightMount, surf:surfMount,
     tintAt:(x, z) => { const t = Math.min(1, Math.max(0, -z / HOLE_LEN)); return t > 0.62 ? [0.95, 0.93, 0.9] : [0.8, 0.88, 0.66]; },
-    decorate:decorateMount }
+    decorate:decorateMount },
+  { tex:"tex/gtex_stonefloor_light.png", repX:30, repY:60, sky:0x141c33, sun:0x8fb4ff, sunI:0.35, hemi:0.5,
+    h:heightFlat, surf:surfNight,
+    tintAt:(x, z) => nightRoad(x, z) ? [0.62, 0.66, 0.8] : [0.34, 0.38, 0.52],
+    decorate:decorateNight }
 ];
 function buildCourse(i){
   const def = COURSE_BUILD[i];
@@ -705,6 +784,8 @@ function buildCourse(i){
   curWaterFn = def.waterFn || ((x, z) => (def.waters || []).some(w => x > w.x0 && x < w.x1 && z < w.z1 && z > w.z0));
   scene.background.set(def.sky); scene.fog.color.set(def.sky);
   sun.color.set(def.sun); sun.intensity = def.sunI;
+  hemi.intensity = def.hemi != null ? def.hemi : 0.95;
+  movers = [];
   buildGround(def);
   buildGreenCup();
   def.decorate();
@@ -777,32 +858,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.721, FOLLOW_Y = 0.868;   // v0.11.8：10°回転でキャンバス 2836x2847 化、人物縦スパン 2020px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=150", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=150", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=160", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -974,7 +1055,7 @@ function loadCourse(i){
   if (!COURSES[i] || !COURSES[i].ready) return;
   courseIdx = i;
   HOLE_LEN = COURSES[i].len; PAR = COURSES[i].par;
-  CUP.set(0, 0, -HOLE_LEN);
+  CUP.set(COURSES[i].cupX || 0, 0, -(COURSES[i].cupZ || HOLE_LEN));
   buildCourse(i);
   document.getElementById("holeName").textContent = "HOLE " + (i + 1) + " ・ " + COURSES[i].name;
   document.getElementById("parNum").textContent = PAR;
@@ -1587,6 +1668,13 @@ function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
+  // 動く障害物（車）の移動と当たり判定の同期
+  for (const m of movers){
+    m.pos += m.dirSign * m.speed * dt;
+    if (m.pos < m.min) m.pos = m.max; else if (m.pos > m.max) m.pos = m.min;
+    if (m.axis === "z"){ m.g.position.z = m.pos; m.col.z = m.pos; }
+    else { m.g.position.x = m.pos; m.col.x = m.pos; }
+  }
   // ゲージ針
   if (state === "hold"){
     const el = (now - holdStart) / 1000 / CLUBS[clubIdx].gauge;
@@ -1796,6 +1884,8 @@ window.__golf = {
   place: (x, z) => { if (state === "aim"){ ball.position.set(x, groundH(x, z) + BALL_R, z); placeChar(); updateArrow(); snapCam = true; } },
   gh: (x, z) => groundH(x, z),
   nColliders: () => colliders.length,
+  nMovers: () => movers.length,
+  carPos: () => movers.map(m => Math.round(m.pos)),
   colliderList: () => colliders.map(c => ({ x: c.x, z: c.z, r: c.r, gr: c.gr, h: c.h })),
   course: () => courseIdx,
   total: () => totalScore,
