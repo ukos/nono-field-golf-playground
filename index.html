@@ -25,13 +25,37 @@
   #needle { position:absolute; top:-2px; bottom:-2px; width:5px; margin-left:-2.5px; background:#fff; box-shadow:0 0 6px #000; border-radius:2px; left:50%; display:none; }
   #gaugeMsg { text-align:center; color:#fff; font-size:14px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.65); margin-top:5px; min-height:19px; }
 
-  /* クラブリスト（右上） */
-  #clubList { position:fixed; top:8px; right:8px; z-index:10; width:104px; max-height:62vh; overflow-y:auto; background:rgba(12,26,18,.62); border:1px solid rgba(255,255,255,.35); border-radius:10px; padding:4px; backdrop-filter:blur(2px); }
-  #clubList .ttl { color:#ffe9a8; font-size:11px; font-weight:700; text-align:center; padding:2px 0 4px; letter-spacing:.1em; }
+  /* クラブリスト（右上）：通常は最小化し、選択中のクラブだけ見せる。タップで展開（2026-11-22 ユーザー指示） */
+  #clubList { position:fixed; top:8px; right:8px; z-index:10; width:104px; background:rgba(12,26,18,.62); border:1px solid rgba(255,255,255,.35); border-radius:10px; padding:4px; backdrop-filter:blur(2px); }
+  #clubHead { cursor:pointer; }
+  #clubList .ttl { color:#ffe9a8; font-size:11px; font-weight:700; text-align:center; padding:2px 0 1px; letter-spacing:.1em; }
+  #clubCur { color:#fff; font-size:15px; font-weight:800; text-align:center; padding:1px 0 3px; }
+  #clubCur .d { color:#b9d6b9; font-size:11px; font-weight:400; margin-left:4px; }
+  #clubCur .arw { color:#ffe9a8; font-size:10px; margin-left:5px; }
+  #clubItems { display:none; max-height:56vh; overflow-y:auto; }
+  #clubList.open #clubItems { display:block; }
   .club { display:flex; justify-content:space-between; align-items:center; padding:4px 7px; margin:2px 0; border-radius:6px; color:#e8f2e8; font-size:13px; cursor:pointer; background:rgba(255,255,255,.06); }
   .club .d { color:#b9d6b9; font-size:11px; }
   .club.sel { background:#2e9e57; color:#fff; font-weight:700; }
   .club.sel .d { color:#eaffea; }
+
+  /* 設定ボタンと設定画面 */
+  #setBtn { position:fixed; top:74px; left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
+  #settings { position:fixed; inset:0; z-index:30; display:none; align-items:flex-start; justify-content:center; background:rgba(8,20,12,.5); overflow-y:auto; padding:26px 12px; }
+  #settings .card { background:rgba(255,255,255,.97); border-radius:16px; padding:20px 22px; width:min(430px,94vw); box-shadow:0 8px 30px rgba(0,0,0,.4); }
+  #settings h2 { font-size:18px; color:#14532d; margin-bottom:6px; }
+  #settings h3 { font-size:13px; color:#33475b; margin:16px 0 7px; border-bottom:1px solid #dde5dd; padding-bottom:4px; }
+  #settings .note { font-size:11px; color:#7a8a7a; margin-top:4px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { padding:6px 10px; font-size:13px; border-radius:15px; border:1.5px solid #b9c9b9; background:#f2f6f2; color:#44554a; cursor:pointer; }
+  .chip.on { background:#2e9e57; border-color:#2e9e57; color:#fff; font-weight:700; }
+  .chip.lock { opacity:.55; cursor:default; }
+  #settings .row { display:flex; gap:14px; align-items:center; font-size:14px; color:#33475b; }
+  #settings .row label { cursor:pointer; }
+  #settings .btns { display:flex; gap:10px; margin-top:20px; }
+  #settings .btns button { flex:1; padding:11px 0; font-size:15px; font-weight:700; border:none; border-radius:9px; cursor:pointer; }
+  #setClose { background:#2e9e57; color:#fff; }
+  #setReset { background:#eef1ee; color:#a33; }
 
   /* スティック（左下） */
   #stick { position:fixed; left:22px; bottom:26px; width:118px; height:118px; border-radius:50%; background:rgba(10,20,14,.38); border:2px solid rgba(255,255,255,.5); z-index:10; }
@@ -56,8 +80,10 @@
 
   /* 横向き（ランドスケープ）対応：低い画面でも UI が収まるように圧縮 */
   @media (orientation: landscape) and (max-height: 540px) {
-    #clubList { max-height:94vh; width:92px; }
+    #clubList { width:92px; }
+    #clubItems { max-height:88vh; }
     #clubList .ttl { font-size:10px; padding:1px 0 2px; }
+    #setBtn { top:60px; }
     .club { padding:2px 6px; margin:1px 0; font-size:12px; }
     .club .d { font-size:10px; }
     #shotBtn { width:80px; height:80px; font-size:16px; right:16px; bottom:16px; }
@@ -85,7 +111,26 @@
   <div id="gaugeMsg"></div>
 </div>
 
-<div id="clubList"><div class="ttl">CLUB</div></div>
+<div id="clubList">
+  <div id="clubHead"><div class="ttl">CLUB</div><div id="clubCur"></div></div>
+  <div id="clubItems"></div>
+</div>
+<button id="setBtn">⚙ 設定</button>
+
+<div id="settings"><div class="card">
+  <h2>設定</h2>
+  <h3>クラブセット（バッグに入れるクラブ）</h3>
+  <div class="chips" id="bagChips"></div>
+  <div class="note">クエストで入手したクラブもここで入れ替えられます（試作では全14本を所持）。PT は常に入っています。</div>
+  <h3>ショット後のカメラ演出</h3>
+  <div class="chips" id="camChips"></div>
+  <div class="note">「ランダム」はショットごとに抽選します。短いショットでは一部パターンをクォーターに読み替えます。</div>
+  <h3>スイング視点</h3>
+  <div class="chips" id="viewChips"></div>
+  <h3>サウンド</h3>
+  <div class="row"><label><input type="radio" name="snd" id="sndOn"> ON</label><label><input type="radio" name="snd" id="sndOff"> OFF</label></div>
+  <div class="btns"><button id="setReset">ホールを最初から</button><button id="setClose">閉じる</button></div>
+</div></div>
 
 <div id="stick"><div id="knob"></div></div>
 <button id="shotBtn">SHOT</button>
@@ -104,7 +149,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.7.1";
+const PAGE_VER = "0.8.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -170,6 +215,51 @@ sun.position.set(60, 120, 40); scene.add(sun);
 function rng(seed){ let a = seed; return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const rand = rng(20261121);
 
+/* ============ スケルトン表示（遮蔽物の半透明化） ============
+   カメラとキャラ（ボール）の間に建物・木・岩が入ったら、その物体を半透明にして
+   向こう側が見えるようにする（2026-11-22 ユーザー指示）。 */
+const occluders = [];   // { meshes:[...], mats:[{mat, base}], fade:1, goal:1 }
+function regOccluder(root){
+  const meshes = [], mats = [], seen = new Set();
+  root.traverse(o => {
+    if (o.isMesh){
+      meshes.push(o);
+      if (!seen.has(o.material)){ seen.add(o.material); o.material.transparent = true; mats.push({ mat:o.material, base:o.material.opacity }); }
+    }
+  });
+  if (meshes.length) occluders.push({ meshes, mats, fade:1, goal:1 });
+}
+const _occRay = new THREE.Raycaster();
+const _occFrom = new THREE.Vector3(), _occTo = new THREE.Vector3(), _occDir = new THREE.Vector3();
+let occFrame = 0;
+function updateOccluders(){
+  // 判定は3フレームに1回、透明度の遷移は毎フレーム滑らかに。
+  // 視線はキャラ中心と頭部の2点で判定する（中心だけだと葉や屋根に頭が隠れるケースを拾えない）
+  if ((occFrame++ % 3) === 0){
+    _occFrom.copy(camera.position);
+    const all = [];
+    for (const u of occluders) for (const m of u.meshes) all.push(m);
+    const hits = new Set();
+    const targets = chara.visible
+      ? [chara.position, _occTo.set(chara.position.x, chara.position.y + 0.8, chara.position.z)]
+      : [ball.position];
+    for (const tp of targets){
+      _occDir.subVectors(tp, _occFrom);
+      const dist = _occDir.length();
+      _occRay.set(_occFrom, _occDir.normalize());
+      _occRay.far = dist - 0.8;
+      for (const h of _occRay.intersectObjects(all, false)) hits.add(h.object);
+    }
+    for (const u of occluders) u.goal = u.meshes.some(m => hits.has(m)) ? 0.16 : 1;
+  }
+  for (const u of occluders){
+    if (Math.abs(u.goal - u.fade) > 0.005){
+      u.fade += (u.goal - u.fade) * 0.3;
+      for (const e of u.mats) e.mat.opacity = e.base * u.fade;
+    }
+  }
+}
+
 /* ============ コース ============ */
 function plane(w, l, color, x, z, y){
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), new THREE.MeshLambertMaterial({ color }));
@@ -216,12 +306,14 @@ function tree(x, z, s){
     c.position.y = (2.6 + i*1.5)*s; g.add(c);
   }
   g.position.set(x, 0, z); g.rotation.y = rand()*Math.PI; scene.add(g);
+  regOccluder(g);
 }
 function rock(x, z, s){
   const r = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4*s, 0),
     new THREE.MeshLambertMaterial({ color:0x8d99a4 }));
   r.position.set(x, 0.7*s, z); r.rotation.set(rand()*3, rand()*3, rand()*3);
   r.scale.y = 0.7; scene.add(r);
+  regOccluder(r);
 }
 for (let z=-8; z>=-372; z-=11+rand()*9){
   for (const side of [-1, 1]){
@@ -245,12 +337,14 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
   const top = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.62, 0.8), red); top.position.y = 6.6; g.add(top);
   const mid = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.45, 0.6), red); mid.position.y = 5.2; g.add(mid);
   g.position.set(0, 0, CUP.z - 9); scene.add(g);
+  regOccluder(g);
   const shrine = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 1.6), new THREE.MeshLambertMaterial({ color:0xd8cfc0 }));
   body.position.y = 0.9; shrine.add(body);
   const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 1.1, 4), new THREE.MeshLambertMaterial({ color:0x5b4632 }));
   roof.position.y = 2.35; roof.rotation.y = Math.PI/4; shrine.add(roof);
   shrine.position.set(0, 0, CUP.z - 13.5); scene.add(shrine);
+  regOccluder(shrine);
 })();
 // カップ＆旗（2026-11-21 ユーザー指示で全体を従来の1/5に縮小。旗はロゴ入り絵 flag.png）
 (function(){
@@ -263,7 +357,7 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
-  new THREE.TextureLoader().load("flag.png?v=071", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=080", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -349,32 +443,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.747, FOLLOW_Y = 0.872;   // 人物割合 1990/2847 → アドレス（1990/2273）に換算
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=071", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=071", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=080", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -411,15 +505,55 @@ function effDist(){
 function inLake(x, z){ return x > LAKE.x0 && x < LAKE.x1 && z < LAKE.z1 && z > LAKE.z0; }
 function onGreen(){ return distToCup() <= GREEN_R; }
 
+/* ============ 設定（localStorage に保存） ============ */
+const CAM_PATTERNS = [
+  { id:"random",  label:"ランダム" },
+  { id:"quarter", label:"クォーター追随" },
+  { id:"low",     label:"ローアングル" },
+  { id:"top",     label:"俯瞰トップ" },
+  { id:"cup",     label:"カップ側リバース" },
+  { id:"chase",   label:"前方フライバイ" },
+  { id:"slow",    label:"スローモーション" }
+];
+const VIEW_PRESETS = [
+  { id:"std",  label:"標準", d:6.5, h:3.1 },
+  { id:"low",  label:"低い", d:5.5, h:1.7 },
+  { id:"high", label:"高い", d:8.0, h:5.2 }
+];
+let settings = { bag: CLUBS.map((c, i) => i), cam: "random", view: "std", sound: true };
+try {
+  const s = JSON.parse(localStorage.getItem("fg_settings_v1") || "null");
+  if (s){
+    if (Array.isArray(s.bag) && s.bag.length) settings.bag = s.bag.filter(i => i >= 0 && i < CLUBS.length);
+    if (!settings.bag.includes(13)) settings.bag.push(13);
+    settings.bag.sort((a, b) => a - b);
+    if (CAM_PATTERNS.some(p => p.id === s.cam)) settings.cam = s.cam;
+    if (VIEW_PRESETS.some(p => p.id === s.view)) settings.view = s.view;
+    if (typeof s.sound === "boolean") settings.sound = s.sound;
+  }
+} catch(e) { /* 保存が読めなければ初期値 */ }
+function saveSettings(){ try { localStorage.setItem("fg_settings_v1", JSON.stringify(settings)); } catch(e) {} }
+function viewPreset(){ return VIEW_PRESETS.find(p => p.id === settings.view) || VIEW_PRESETS[0]; }
+
 /* ============ UI ============ */
 const clubListEl = document.getElementById("clubList");
-CLUBS.forEach((c, i) => {
-  const d = document.createElement("div");
-  d.className = "club" + (i === 0 ? " sel" : "");
-  d.innerHTML = "<span>" + c.name + "</span><span class='d'>" + (c.dist ? c.dist + "m" : "自動") + "</span>";
-  d.addEventListener("click", () => { if (state === "aim") selectClub(i); });
-  clubListEl.appendChild(d);
-});
+const clubItemsEl = document.getElementById("clubItems");
+const clubCurEl = document.getElementById("clubCur");
+document.getElementById("clubHead").addEventListener("click", () => clubListEl.classList.toggle("open"));
+function renderClubList(){
+  clubItemsEl.innerHTML = "";
+  for (const i of settings.bag){
+    const c = CLUBS[i];
+    const d = document.createElement("div");
+    d.className = "club" + (i === clubIdx ? " sel" : "");
+    d.dataset.idx = i;
+    d.innerHTML = "<span>" + c.name + "</span><span class='d'>" + (c.dist ? c.dist + "m" : "自動") + "</span>";
+    d.addEventListener("click", () => { if (state === "aim"){ selectClub(i); clubListEl.classList.remove("open"); } });
+    clubItemsEl.appendChild(d);
+  }
+  const c = CLUBS[clubIdx];
+  clubCurEl.innerHTML = c.name + "<span class='d'>" + (c.dist ? c.dist + "m" : "自動") + "</span><span class='arw'>▾</span>";
+}
 const bestZone = document.getElementById("bestZone");
 const needle = document.getElementById("needle");
 const msgEl = document.getElementById("gaugeMsg");
@@ -427,8 +561,9 @@ const remainEl = document.getElementById("remain");
 const strokesEl = document.getElementById("strokes");
 function selectClub(i){
   clubIdx = i;
-  [...clubListEl.querySelectorAll(".club")].forEach((el, j) => el.classList.toggle("sel", j === i));
+  [...clubItemsEl.querySelectorAll(".club")].forEach(el => el.classList.toggle("sel", +el.dataset.idx === i));
   const c = CLUBS[i];
+  clubCurEl.innerHTML = c.name + "<span class='d'>" + (c.dist ? c.dist + "m" : "自動") + "</span><span class='arw'>▾</span>";
   bestZone.style.left = (50 - c.best/2) + "%";
   bestZone.style.width = c.best + "%";
   updateArrow();
@@ -438,7 +573,60 @@ function showMsg(t, ms){
   if (msgTimer) clearTimeout(msgTimer);
   if (ms) msgTimer = setTimeout(() => { msgEl.textContent = ""; }, ms);
 }
+renderClubList();
 selectClub(0);
+
+/* ============ 設定画面の配線 ============ */
+const settingsEl = document.getElementById("settings");
+function chipRow(el, items, cur, onPick){
+  el.innerHTML = "";
+  for (const it of items){
+    const b = document.createElement("button");
+    b.className = "chip" + (it.id === cur ? " on" : "");
+    b.textContent = it.label;
+    b.addEventListener("click", () => onPick(it.id));
+    el.appendChild(b);
+  }
+}
+function renderSettings(){
+  // クラブセット
+  const bagEl = document.getElementById("bagChips");
+  bagEl.innerHTML = "";
+  CLUBS.forEach((c, i) => {
+    const b = document.createElement("button");
+    const on = settings.bag.includes(i);
+    b.className = "chip" + (on ? " on" : "") + (i === 13 ? " lock" : "");
+    b.textContent = c.name + (c.dist ? " " + c.dist + "m" : "");
+    b.addEventListener("click", () => {
+      if (i === 13) return;   // PT は常駐
+      if (on){
+        if (settings.bag.filter(x => x !== 13).length <= 1) return;   // 通常クラブは最低1本
+        settings.bag = settings.bag.filter(x => x !== i);
+        if (clubIdx === i) selectClub(settings.bag.find(x => x !== 13));
+      } else {
+        settings.bag.push(i); settings.bag.sort((a, b2) => a - b2);
+      }
+      saveSettings(); renderClubList(); renderSettings();
+    });
+    bagEl.appendChild(b);
+  });
+  chipRow(document.getElementById("camChips"), CAM_PATTERNS, settings.cam, id => { settings.cam = id; saveSettings(); renderSettings(); });
+  chipRow(document.getElementById("viewChips"), VIEW_PRESETS.map(p => ({ id:p.id, label:p.label })), settings.view, id => { settings.view = id; saveSettings(); renderSettings(); snapCam = true; });
+  document.getElementById("sndOn").checked = settings.sound;
+  document.getElementById("sndOff").checked = !settings.sound;
+}
+document.getElementById("setBtn").addEventListener("click", () => { renderSettings(); settingsEl.style.display = "flex"; });
+document.getElementById("setClose").addEventListener("click", () => { settingsEl.style.display = "none"; });
+document.getElementById("sndOn").addEventListener("change", () => { settings.sound = true; saveSettings(); });
+document.getElementById("sndOff").addEventListener("change", () => { settings.sound = false; saveSettings(); });
+document.getElementById("setReset").addEventListener("click", () => {
+  settingsEl.style.display = "none";
+  document.getElementById("result").style.display = "none";
+  ball.position.set(0, BALL_R, 0);
+  strokes = 0; strokesEl.textContent = 0;
+  state = "aim"; aimOffset = 0; knob.style.transform = "translate(0px,0)";
+  selectClub(0); placeChar(); marker.visible = true; updateArrow(); snapCam = true;
+});
 
 /* スティック */
 const stick = document.getElementById("stick"), knob = document.getElementById("knob");
@@ -466,6 +654,7 @@ window.addEventListener("keyup", e => { if (e.key === " " && state === "hold") r
 let AC = null;
 function audio(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); return AC; }
 function hitSound(best, putt){
+  if (!settings.sound) return;
   try {
     const ac = audio(), t = ac.currentTime;
     if (putt){
@@ -497,6 +686,7 @@ function hitSound(best, putt){
   } catch(e) { /* 試作：音が出なくても続行 */ }
 }
 function splashSound(){
+  if (!settings.sound) return;
   try {
     const ac = audio(), t = ac.currentTime;
     const len = Math.floor(ac.sampleRate * 0.4);
@@ -510,6 +700,7 @@ function splashSound(){
   } catch(e) {}
 }
 function cupSound(){
+  if (!settings.sound) return;
   try {
     const ac = audio(), t = ac.currentTime;
     [660, 990].forEach((f, i) => {
@@ -606,6 +797,20 @@ function fire(p){
     const v = Math.sqrt(carry * GRAV / Math.sin(2 * th));
     shot.vel = new THREE.Vector3(dir.x * v * Math.cos(th), v * Math.sin(th), dir.z * v * Math.cos(th));
     state = "fly";
+    // カメラ演出パターンの抽選（2026-11-22 ユーザー指示：劇的なパターンを複数用意しランダムに切り替える）
+    const POOL = ["quarter", "quarter", "low", "top", "cup", "chase", "slow"];
+    let pat = settings.cam === "random" ? POOL[Math.floor(Math.random() * POOL.length)] : settings.cam;
+    if ((pat === "cup" || pat === "chase") && carry + shot.rollDist < 60) pat = "quarter";   // 短いショットでは読み替え
+    shot.pattern = pat;
+    shot.apexY = 0;
+    const sx = dir.z, sz = -dir.x;   // 進行方向の横（クォーターと同じ側）
+    if (pat === "low"){          // ローアングル：弾道の中ほど・地上すれすれから見上げる
+      shot.patPos = new THREE.Vector3(shot.origin.x + dir.x * carry * 0.45 + sx * 8, 1.15,
+                                      shot.origin.z + dir.z * carry * 0.45 + sz * 8);
+    } else if (pat === "cup"){   // カップ側リバース：着地点の先から飛んでくるボールを迎える
+      const lx = shot.origin.x + dir.x * (carry + shot.rollDist * 0.5), lz = shot.origin.z + dir.z * (carry + shot.rollDist * 0.5);
+      shot.patPos = new THREE.Vector3(lx + dir.x * 11 + sx * 3.5, 2.3, lz + dir.z * 11 + sz * 3.5);
+    }
   }
 }
 function startRoll(){
@@ -673,9 +878,10 @@ function placeChar(){
 function suggestClub(){
   if (onGreen()) return selectClub(13);
   const need = distToCup();
-  // dist が大きい順に並んでいるので「足りる中で最小」は末尾側
-  let pick = 0;
-  for (let i = 12; i >= 0; i--) if (CLUBS[i].dist >= need) { pick = i; break; }
+  // バッグ内のクラブから「足りる中で最小」を選ぶ。足りるものがなければ最長
+  const bag = settings.bag.filter(i => i !== 13);
+  let pick = bag[0];
+  for (const i of bag) if (CLUBS[i].dist >= need) pick = i;
   selectClub(pick);
 }
 
@@ -709,9 +915,13 @@ function animate(){
   }
   // 物理
   if (state === "fly" && shot){
-    shot.t += dt;
-    shot.vel.y -= GRAV * dt;
-    ball.position.addScaledVector(shot.vel, dt);
+    // スローモーションパターン：落下局面（頂点の45%以下）で時間を 0.35 倍に
+    let dtF = dt;
+    if (shot.pattern === "slow" && shot.vel.y < 0 && ball.position.y < shot.apexY * 0.45) dtF = dt * 0.35;
+    shot.t += dtF;
+    shot.vel.y -= GRAV * dtF;
+    ball.position.addScaledVector(shot.vel, dtF);
+    if (ball.position.y > shot.apexY) shot.apexY = ball.position.y;
     if (ball.position.y < BALL_R) ball.position.y = BALL_R;
     trailPush(ball.position); glow.position.copy(ball.position);
     const dx = ball.position.x - shot.origin.x, dz = ball.position.z - shot.origin.z;
@@ -753,9 +963,10 @@ function animate(){
   marker.scale.set(pulse, pulse, 1);
   // カメラ
   let camPos, camLook;
+  const vp = viewPreset();
   if (state === "aim" || state === "hold" || state === "swing"){
     const dir = aimVector(aimOffset);
-    camPos = new THREE.Vector3(ball.position.x - dir.x * 6.5, 3.1, ball.position.z - dir.z * 6.5);
+    camPos = new THREE.Vector3(ball.position.x - dir.x * vp.d, vp.h, ball.position.z - dir.z * vp.d);
     camLook = new THREE.Vector3(ball.position.x + dir.x * 11, 0.5, ball.position.z + dir.z * 11);
     if (snapCam){ camera.position.copy(camPos); snapCam = false; }
     else camera.position.lerp(camPos, 0.22);
@@ -764,7 +975,7 @@ function animate(){
     const d = shot.dir;
     if (shot.t < shot.camDelay){
       // フィニッシュの余韻が終わるまではスイング視点を保持：発射位置（origin）基準の aim カメラで、キャラと発射点を見る
-      camPos = new THREE.Vector3(shot.origin.x - d.x * 6.5, 3.1, shot.origin.z - d.z * 6.5);
+      camPos = new THREE.Vector3(shot.origin.x - d.x * vp.d, vp.h, shot.origin.z - d.z * vp.d);
       camLook = new THREE.Vector3(shot.origin.x + d.x * 11, 0.5, shot.origin.z + d.z * 11);
       camera.position.lerp(camPos, 0.22);
       lookCur.lerp(camLook, 0.35);
@@ -773,22 +984,42 @@ function animate(){
       camLook = new THREE.Vector3(ball.position.x + d.x * 6, 0.3, ball.position.z + d.z * 6);
       camera.position.lerp(camPos, 0.25); lookCur.lerp(camLook, 0.3);
     } else {
-      // サイドバッククォーターでボールを追い続ける：スイング視点から 0.6秒かけて所定オフセットへ滑らかに移行
+      // 演出パターンごとにカメラを切り替える（スイング視点から 0.6秒かけて滑らかに移行）
       const k = quarterK(shot.t - shot.camDelay);
-      // 目標オフセット＝横（進行方向に垂直）10m ＋ 後方 7m ＋ 高さ 5m。移行中は基準点を発射位置→ボールへブレンドし、跳びを防ぐ
-      const ox = (-d.x * 6.5) * (1 - k) + ( d.z * 10 - d.x * 7) * k;
-      const oy = (3.0) * (1 - k) + 5 * k;
-      const oz = (-d.z * 6.5) * (1 - k) + (-d.x * 10 - d.z * 7) * k;
-      const ax = shot.origin.x + (ball.position.x - shot.origin.x) * k;
-      const ay = shot.origin.y + (ball.position.y - shot.origin.y) * k;
-      const az = shot.origin.z + (ball.position.z - shot.origin.z) * k;
-      camPos = new THREE.Vector3(ax + ox, ay + oy, az + oz);
-      camera.position.copy(camPos);   // 位置は anchor + offset で直接決める（lerp の重ね掛けで遅れない）
-      camLook = new THREE.Vector3(ball.position.x + d.x * 6, ball.position.y, ball.position.z + d.z * 6);
-      lookCur.lerp(camLook, 0.35);   // 視点は緩やかに追随
+      const pat = shot.pattern || "quarter";
+      if (pat === "quarter" || pat === "slow"){
+        // サイドバッククォーター追随：横10m＋後方7m＋高さ5m。移行中は基準点を発射位置→ボールへブレンド
+        const ox = (-d.x * vp.d) * (1 - k) + ( d.z * 10 - d.x * 7) * k;
+        const oy = (vp.h) * (1 - k) + 5 * k;
+        const oz = (-d.z * vp.d) * (1 - k) + (-d.x * 10 - d.z * 7) * k;
+        const ax = shot.origin.x + (ball.position.x - shot.origin.x) * k;
+        const ay = shot.origin.y + (ball.position.y - shot.origin.y) * k;
+        const az = shot.origin.z + (ball.position.z - shot.origin.z) * k;
+        camPos = new THREE.Vector3(ax + ox, ay + oy, az + oz);
+        camera.position.copy(camPos);   // 位置は anchor + offset で直接決める（lerp の重ね掛けで遅れない）
+        camLook = new THREE.Vector3(ball.position.x + d.x * 6, ball.position.y, ball.position.z + d.z * 6);
+        lookCur.lerp(camLook, 0.35);
+      } else {
+        let desired;
+        if (pat === "low" || pat === "cup"){
+          desired = shot.patPos;   // 固定位置からボールを見送る／迎える
+        } else if (pat === "top"){   // 俯瞰：ボールの真上52mから追う
+          desired = new THREE.Vector3(ball.position.x + d.z * 6 - d.x * 10, ball.position.y + 52,
+                                      ball.position.z - d.x * 6 - d.z * 10);
+        } else {   // chase 前方フライバイ：ボールの前方9mを飛び、振り返ってボールを捉え続ける
+          desired = new THREE.Vector3(ball.position.x + d.x * 9 + d.z * 2.5, ball.position.y + 2.2,
+                                      ball.position.z + d.z * 9 - d.x * 2.5);
+        }
+        const swPos = new THREE.Vector3(shot.origin.x - d.x * vp.d, vp.h, shot.origin.z - d.z * vp.d);
+        if (k < 1) camera.position.lerpVectors(swPos, desired, k);
+        else camera.position.copy(desired);
+        camLook = ball.position.clone();   // 常にボールを捉える
+        lookCur.lerp(camLook, 0.4);
+      }
     }
   }
   camera.lookAt(lookCur);
+  updateOccluders();   // カメラとキャラの間に入った建物・木・岩をスケルトン表示に
   if (state === "aim" || state === "hold" || state === "swing") remainEl.textContent = Math.round(distToCup());
   renderer.render(scene, camera);
 }
@@ -810,6 +1041,9 @@ window.__golf = {
   ballPos: () => ({ x: ball.position.x, y: ball.position.y, z: ball.position.z }),
   dist: () => distToCup(),
   club: () => CLUBS[clubIdx].name,
+  pattern: () => shot ? (shot.pattern || null) : null,
+  camY: () => camera.position.y,
+  occFaded: () => occluders.filter(u => u.goal < 1).length,
   select: i => { if (state === "aim") selectClub(i); },
   setAim: deg => { aimOffset = deg * Math.PI / 180; updateArrow(); },
   press: () => pressStart(),
