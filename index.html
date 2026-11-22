@@ -125,14 +125,14 @@ const LAKE = { x0:30, x1:98, z0:-272, z1:-118 };   // 右側の湖
 const GRAV = 13, ROLL_A = 65, PUTT_A = 12;
 
 /* ============ 状態 ============ */
-let state = "aim";           // aim | hold | swing | fly | roll | done
+let state = "aim";           // aim | hold | fly | roll | done
 let clubIdx = 0;
 let strokes = 0;
 let aimOffset = 0;           // ラジアン（スティック）
 let lockedAim = 0;
 let holdStart = 0, needlePos = 0.5;
 let shot = null;             // 飛行中データ
-let swingTimer = 0, pendingP = null;   // スイング動作（swing 状態）の残り時間と保留したゲージ位置
+let backShown = false;       // hold 中に振りかぶり絵へ切り替え済みか
 let prevBallPos = new THREE.Vector3(0, 0, 0);
 let msgTimer = null;
 
@@ -312,9 +312,9 @@ const charTex = (function(){
 const chara = new THREE.Sprite(new THREE.SpriteMaterial({ map:charTex, transparent:true }));
 chara.scale.set(0.93, 1.395, 1); scene.add(chara);   // キャラ表示は従来の1.5倍（2026-11-21 ユーザー指示）
 /* キャラ絵の差し替え管理：表示高さ 1.395m を維持し、幅は各絵の縦横比で再計算する。
-   スイング絵（swing_back.png／swing_follow.png）が読めなければ、その間は立ち絵のまま（フォールバック）。 */
+   スイング絵（swing_address.png／swing_back.png／swing_follow.png）が読めなければ、その間は立ち絵のまま（フォールバック）。 */
 const CHAR_H = 1.395;
-let texStand = charTex, texBack = null, texFollow = null;
+let texStand = charTex, texAddress = null, texBack = null, texFollow = null;
 function setCharaTex(tex){
   if (!tex) return;
   chara.material.map = tex;
@@ -326,9 +326,12 @@ function setCharaTex(tex){
 new THREE.TextureLoader().load("golfer.png", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
-  if (state === "aim" || state === "hold") setCharaTex(texStand);
+  if (state === "aim") setCharaTex(texStand);
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
-// スイング絵（振りかぶり／フォロースルー）
+// スイング絵（アドレス／振りかぶり／フォロースルー）
+new THREE.TextureLoader().load("swing_address.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texAddress = tex;
+}, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
 new THREE.TextureLoader().load("swing_back.png", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：振りかぶりは立ち絵のまま */ });
@@ -360,7 +363,7 @@ function aimVector(off){
   const a = -off, c = Math.cos(a), s = Math.sin(a);
   return new THREE.Vector3(bx * c + bz * s, 0, bz * c - bx * s).normalize();
 }
-function flightK(t){ const k = Math.min(Math.max(t / 1.5, 0), 1); return k * k * (3 - 2 * k); }   // 飛行カメラの進行度（0〜1.5秒で smoothstep）
+function quarterK(t){ const k = Math.min(Math.max(t / 0.6, 0), 1); return k * k * (3 - 2 * k); }   // 飛行カメラの移行度（0〜0.6秒で smoothstep）
 function effDist(){
   const c = CLUBS[clubIdx];
   if (c.name === "PT") return Math.min(distToCup(), 60);
@@ -494,17 +497,19 @@ function pressStart(){
   needle.style.display = "block";
   shotBtn.classList.add("hold");
   if (arrow) arrow.visible = true;
+  // 押した瞬間：アドレス絵（右向き・ボールに正対した構え）に切り替え、クラブがボールに届いて見えるようボール側へ少し寄せる
+  setCharaTex(texAddress);   // 読めていなければ立ち絵のまま
+  backShown = false;
+  const toBall = new THREE.Vector3(ball.position.x - chara.position.x, 0, ball.position.z - chara.position.z);
+  if (toBall.lengthSq() > 0.0001){
+    toBall.normalize();
+    chara.position.addScaledVector(toBall, 0.25);
+    charShadow.position.set(chara.position.x, 0.03, chara.position.z);
+  }
 }
 function releaseShot(){
-  if (state !== "hold") return;
-  // 発射は保留し、先にスイング動作（振りかぶり）を挟む。時間が来たら animate 側で fire(pendingP)。
-  pendingP = needlePos;
-  needle.style.display = "none";
-  shotBtn.classList.remove("hold");
-  if (arrow) arrow.visible = false;
-  setCharaTex(texBack);   // 振りかぶり絵（読めていなければ立ち絵のまま）
-  swingTimer = CLUBS[clubIdx].name === "PT" ? 0.12 : 0.22;
-  state = "swing";
+  // 離した瞬間がインパクト：遅延なしで即発射し、絵はフォロースルーへ（fire 内で差し替え）
+  if (state === "hold") fire(needlePos);
 }
 shotBtn.addEventListener("pointerdown", e => { e.preventDefault(); pressStart(); });
 shotBtn.addEventListener("pointerup", e => { e.preventDefault(); releaseShot(); });
@@ -626,11 +631,8 @@ function animate(){
     const ph = el % 2;
     needlePos = ph < 1 ? ph : 2 - ph;
     needle.style.left = (needlePos * 100) + "%";
-  }
-  // スイング動作：時間が来たら保留した発射を実行
-  if (state === "swing"){
-    swingTimer -= dt;
-    if (swingTimer <= 0){ const p = pendingP; pendingP = null; fire(p); }
+    // 押してから約0.15秒で振りかぶり絵に切り替え、そのまま保持（離した瞬間にインパクト）
+    if (!backShown && (now - holdStart) / 1000 >= 0.15){ setCharaTex(texBack); backShown = true; }
   }
   // 物理
   if (state === "fly" && shot){
@@ -662,8 +664,8 @@ function animate(){
   }
   // ボール影・マーカー
   if (glow.visible && shot) {
-    // 光点もカメラ進行度 k に連動させて連続変化させる（段差なし）。パターは小さいまま
-    const gs = shot.putt ? 0.9 : 0.9 + 4.1 * flightK(shot.t);
+    // 光点は飛行中 1.6 倍の一定値（ボールが点にならない大きさを保つ）。パターは小さいまま
+    const gs = shot.putt ? 0.9 : 1.6;
     glow.scale.set(gs, gs, 1);
   }
   ballShadow.position.set(ball.position.x, 0.03, ball.position.z);
@@ -672,7 +674,7 @@ function animate(){
   marker.scale.set(pulse, pulse, 1);
   // カメラ
   let camPos, camLook;
-  if (state === "aim" || state === "hold" || state === "swing"){
+  if (state === "aim" || state === "hold"){
     const dir = aimVector(aimOffset);
     camPos = new THREE.Vector3(ball.position.x - dir.x * 6.5, 3.1, ball.position.z - dir.z * 6.5);
     camLook = new THREE.Vector3(ball.position.x + dir.x * 11, 0.5, ball.position.z + dir.z * 11);
@@ -685,21 +687,21 @@ function animate(){
       camLook = new THREE.Vector3(ball.position.x + shot.dir.x * 6, 0.3, ball.position.z + shot.dir.z * 6);
       camera.position.lerp(camPos, 0.25); lookCur.lerp(camLook, 0.3);
     } else {
-      // 一続きのカメラ（切替なし）：サイドビュー（k=0）→ 斜め上からの俯瞰（k=1）へ連続移行し、ボールを追い続ける
-      const k = flightK(shot.t);
+      // サイド・クォータービューでボールを追い続ける：打球直後の後方視点から 0.6秒かけて所定オフセットへ滑らかに移行
+      const k = quarterK(shot.t);
       const d = shot.dir;
-      // オフセット：進行方向に垂直な横 8m・高さ 2.0m → 後方 20m・高さ 26m
-      const ox =  d.z * 8 * (1 - k) - d.x * 20 * k;
-      const oy =  2.0 * (1 - k) + 26 * k;
-      const oz = -d.x * 8 * (1 - k) - d.z * 20 * k;
+      // 開始オフセット＝aim 視点の続き（後方 6.5m・高さ約3.1m）／目標＝横（進行方向に垂直）10m ＋ 後方 7m ＋ 高さ 5m
+      const ox = (-d.x * 6.5) * (1 - k) + ( d.z * 10 - d.x * 7) * k;
+      const oy = (3.0) * (1 - k) + 5 * k;
+      const oz = (-d.z * 6.5) * (1 - k) + (-d.x * 10 - d.z * 7) * k;
       camPos = new THREE.Vector3(ball.position.x + ox, ball.position.y + oy, ball.position.z + oz);
-      camera.position.copy(camPos);   // 位置は ball.position + offset(k) で直接決める（lerp の重ね掛けなし）
-      camLook = new THREE.Vector3(ball.position.x + d.x * (6 + 10 * k), ball.position.y, ball.position.z + d.z * (6 + 10 * k));
-      lookCur.lerp(camLook, 0.35);   // 視点だけは従来どおり緩やかに追随
+      camera.position.copy(camPos);   // 位置は ball.position + offset で直接決める（lerp の重ね掛けで遅れない）
+      camLook = new THREE.Vector3(ball.position.x + d.x * 6, ball.position.y, ball.position.z + d.z * 6);
+      lookCur.lerp(camLook, 0.35);   // 視点は緩やかに追随
     }
   }
   camera.lookAt(lookCur);
-  if (state === "aim" || state === "hold" || state === "swing") remainEl.textContent = Math.round(distToCup());
+  if (state === "aim" || state === "hold") remainEl.textContent = Math.round(distToCup());
   renderer.render(scene, camera);
 }
 placeChar();
