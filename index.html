@@ -190,7 +190,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.21.1";
+const PAGE_VER = "0.22.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -245,6 +245,38 @@ let HOLE_LEN = COURSES[0].len, PAR = COURSES[0].par;
 const CUP = new THREE.Vector3(0, 0, -HOLE_LEN);
 let totalScore = 0;   // ホールアウト／ギブアップで加算される合計スコア
 const GREEN_R = 14;
+/* ============ グリーンの形（2026-11-22 ユーザー指示：毎回6種からランダム＋高解像度の芝テクスチャ） ============
+   1 円・フラット / 2 楕円・高低差 / 3 円二つ・高低差 / 4 円・高低差若干 / 5 円・すり鉢 / 6 円・小山
+   greenPat は buildCourse のたびに抽選する（同じホールの再挑戦では変わらない）。 */
+const GREEN_PATS = ["円・フラット", "楕円・高低差あり", "円二つ・高低差あり", "円・高低差若干", "円・すり鉢状", "円・小山"];
+let greenPat = 0;
+let forcedGreenPat = null;   // 検証用（__golf.setGreenPat）
+function pickGreenPat(){ greenPat = forcedGreenPat != null ? forcedGreenPat : Math.floor(Math.random() * 6); }
+/* グリーンの正規化距離 s（1以下がグリーン内、エプロン側は1を超える） */
+function greenS(x, z){
+  const dx = x - CUP.x, dz = z - CUP.z;
+  if (greenPat === 1) return Math.hypot(dx / 10, dz / 17);
+  if (greenPat === 2) return Math.min(Math.hypot(dx, dz), Math.hypot(dx, dz - 13)) / 10.5;
+  return Math.hypot(dx, dz) / GREEN_R;
+}
+function inGreen(x, z){ return greenS(x, z) <= 1; }
+/* グリーンの起伏（常に0以上。外周 1.35s で 0 に落ち着く） */
+function greenRelief(x, z){
+  const dx = x - CUP.x, dz = z - CUP.z;
+  if (Math.abs(dx) > 30 || Math.abs(dz) > 36) return 0;
+  const s = greenS(x, z);
+  if (s > 1.35) return 0;
+  const w = 1 - smooth01(1.0, 1.35, s);
+  switch (greenPat){
+    case 0: return 0;
+    case 1: return Math.max(0.03, 0.85 + 0.8 * (dx / 10)) * w;
+    case 2: return Math.max(0.04, 0.75 + 0.5 * Math.sin(dx * 0.16) + 0.4 * Math.cos(dz * 0.1)) * w;
+    case 3: return Math.max(0.03, 0.3 + 0.2 * Math.sin(dx * 0.15 + 1) * Math.cos(dz * 0.12)) * w;
+    case 4: return s <= 1 ? s * s : w;
+    case 5: { const t = Math.min(s, 1); return 0.45 * (1 + Math.cos(Math.PI * t)); }
+  }
+  return 0;
+}
 const LAKE = { x0:30, x1:98, z0:-272, z1:-118 };   // 右側の湖
 const GRAV = 13, ROLL_A = 65, PUTT_A = 12;
 
@@ -331,7 +363,7 @@ function updateOccluders(){
    高さ関数・地面種別・水域はコースごとに buildCourse が差し替える。 */
 function smooth01(a, b, x){ const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 let curH = (x, z) => 0;
-function groundH(x, z){ return curH(x, z); }
+function groundH(x, z){ return curH(x, z) + greenRelief(x, z); }
 let curWaterFn = (x, z) => false;
 function inLake(x, z){ return curWaterFn(x, z); }
 let curSurfFn = (x, z) => "fairway";
@@ -353,14 +385,14 @@ function heightGrass(x, z){
 }
 function surfGrass(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (x > LAKE.x0 - 4 && x < LAKE.x1 + 4 && z < LAKE.z1 + 4 && z > LAKE.z0 - 4) return "sand";
   if (Math.abs(x) <= 25 && z <= 35 && z >= -365) return "fairway";
   return "rough";
 }
 /* ---- コース2「都会（早朝）」：平坦。中央の道路がアスファルト ---- */
 function surfCity(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 9 && z <= 35 && z >= -(HOLE_LEN + 15)) return "asphalt";
   return "rough";
 }
@@ -369,23 +401,23 @@ function heightForest(x, z){
   return heightGrass(x, z) + 6 * (1 - smooth01(8, 48, Math.hypot(x, z)));
 }
 function surfForest(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 18 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
-/* ---- コース4「海岸線」：右側は5m下の砂浜、その先は海 ---- */
+/* ---- コース4「海岸線」：右側は10m下の砂浜、その先は海 ---- */
 function heightCoast(x, z){
   const roll = 0.8 * Math.sin(x * 0.03 + 0.5) * Math.sin(z * 0.02) + 0.4 * Math.sin(x * 0.07) * Math.sin(z * 0.05 + 1.2);
   const f = Math.min(smooth01(10, 26, Math.hypot(x, z)), smooth01(14, 30, Math.hypot(x - CUP.x, z - CUP.z)));
   let h = roll * f;
-  h *= 1 - smooth01(22, 32, x);            // 崖から先は平らに
-  return h - 10 * smooth01(26, 34, x);     // 右側は10m下の砂浜（2026-11-22 ユーザー指示で5m→10m）
+  h *= 1 - smooth01(12, 22, x);            // 崖から先は平らに
+  return h - 10 * smooth01(15, 23, x);     // 右側は10m下の砂浜（フェアウェイ半幅化に合わせて崖を手前へ＝砂浜が広い）
 }
 function surfCoast(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
-  if (x > 30) return "sand";
-  if (Math.abs(x) <= 22 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
+  if (inGreen(x, z)) return "green";
+  if (x > 19) return "sand";
+  if (Math.abs(x) <= 11 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
 /* ---- コース5「打ち降ろし」：+30mの崖の上から、池の小島のグリーンへ（全長50m） ---- */
@@ -396,7 +428,7 @@ function heightDrop(x, z){
 }
 function surfDrop(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (z >= -14 && Math.abs(x) <= 22) return "fairway";              // ティーの台地
   if (Math.hypot(x - CUP.x, z - CUP.z) <= 20) return "fairway";     // 小島
   return "rough";
@@ -408,7 +440,7 @@ function heightPlateau(x, z){
   return roll * f;
 }
 function surfPlateau(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 22 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
@@ -420,7 +452,7 @@ function heightBeach(x, z){
 }
 function surfBeach(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   return "sand";
 }
 /* ---- コース8「山の上」：麓から山頂のクレーター跡まで登り一辺倒 ---- */
@@ -432,7 +464,7 @@ function heightMount(x, z){
   return rise + roll * f;
 }
 function surfMount(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 20 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
@@ -444,7 +476,7 @@ function nightRoad(x, z){
   return leg1 || leg2;
 }
 function surfNight(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   return nightRoad(x, z) ? "asphalt" : "rough";
 }
 /* ---- コース10「機械遺跡」：石床はよく転がる。柱と歯車の障害物 ---- */
@@ -454,7 +486,7 @@ function heightRuins(x, z){
   return roll * f;
 }
 function surfRuins(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 20 && z <= 35 && z >= -(HOLE_LEN + 15)) return "stone";
   return "rough";
 }
@@ -465,7 +497,7 @@ function heightJungle(x, z){
   return roll * f;
 }
 function surfJungle(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 14 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
@@ -476,7 +508,7 @@ function heightSnow(x, z){
   return roll * f;
 }
 function surfSnow(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   return "snow";
 }
 /* ---- コース13「灼砂の砂漠」：全面砂＋砂丘。オアシスは水ハザード ---- */
@@ -488,7 +520,7 @@ function heightDesert(x, z){
 }
 function surfDesert(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   return "sand";
 }
 /* ---- コース14「大渓谷」：狭い谷底、両側は崖。中盤に川（キャリー必須） ---- */
@@ -501,7 +533,7 @@ function heightCanyon(x, z){
 }
 function surfCanyon(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 13 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
@@ -512,7 +544,7 @@ function heightBamboo(x, z){
   return roll * f;
 }
 function surfBamboo(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 16 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
@@ -526,7 +558,7 @@ function heightVolcano(x, z){
 }
 function surfVolcano(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 18 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
@@ -539,7 +571,7 @@ function heightMarsh(x, z){
 }
 function surfMarsh(x, z){
   if (inLake(x, z)) return "water";
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x) <= 15 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "marsh";
 }
@@ -556,7 +588,7 @@ function heightDusk(x, z){
   return roll * f;
 }
 function surfDusk(x, z){
-  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (inGreen(x, z)) return "green";
   if (Math.abs(x + 38) <= 17 && z <= -228 && z >= -312) return "stone";          // 城壁まわりの石畳
   if (Math.abs(x) <= 20 && z <= 35 && z >= -395) return "fairway";
   if (distSeg(x, z, 0, -380, CUP.x, CUP.z) <= 20) return "fairway";              // 斜めの最終レグ
@@ -573,7 +605,7 @@ function buildGround(def){
   const zOff = 290 - L / 2;
   for (let i = 0; i < pos.count; i++){
     const x = pos.getX(i), z = pos.getZ(i) + zOff;
-    pos.setY(i, groundH(x, z));
+    pos.setY(i, curH(x, z));   // グリーンの起伏は地面メッシュには入れない（専用メッシュと物理だけが持つ）
     pos.setZ(i, z);
     const c = def.tintAt(x, z);
     colors[i * 3] = c[0]; colors[i * 3 + 1] = c[1]; colors[i * 3 + 2] = c[2];
@@ -582,7 +614,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=211", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=220", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -591,10 +623,63 @@ function buildGround(def){
     mesh.material.needsUpdate = true;
   }, undefined, () => { /* 読めなければ頂点カラーで表示 */ });
 }
+/* グリーンの境界半径（極座標メッシュ用）。楕円と二つ円は方向で変わる */
+function greenRadiusAt(theta){
+  const c = Math.cos(theta), s = Math.sin(theta);
+  if (greenPat === 1){ const a = 10, b = 17; return a * b / Math.hypot(b * c, a * s); }
+  if (greenPat === 2){
+    let r = 10.5;
+    const proj = 13 * s, disc = proj * proj - (169 - 10.5 * 10.5);
+    if (disc > 0) r = Math.max(r, proj + Math.sqrt(disc));
+    return r;
+  }
+  return GREEN_R;
+}
+let greenTexObj = null;
+/* グリーン専用メッシュ：形に沿った極座標グリッド＋起伏＋高解像度の芝テクスチャ（エプロン分 1.38 倍まで） */
+function buildGreenMesh(){
+  const RINGS = 16, SEC = 56, EXT = 1.38;
+  const verts = [CUP.x, 0, CUP.z], uvs = [0, 0], idx = [];
+  for (let k = 1; k <= RINGS; k++){
+    const f = k / RINGS;
+    for (let j = 0; j < SEC; j++){
+      const th = j / SEC * Math.PI * 2, r = greenRadiusAt(th) * EXT * f;
+      verts.push(CUP.x + Math.cos(th) * r, 0, CUP.z + Math.sin(th) * r);
+      uvs.push(Math.cos(th) * r / 5.6, Math.sin(th) * r / 5.6);
+    }
+  }
+  for (let j = 0; j < SEC; j++) idx.push(0, 1 + (j + 1) % SEC, 1 + j);
+  for (let k = 0; k < RINGS - 1; k++){
+    const a0 = 1 + k * SEC, b0 = 1 + (k + 1) * SEC;
+    for (let j = 0; j < SEC; j++){
+      const j1 = (j + 1) % SEC;
+      idx.push(a0 + j, a0 + j1, b0 + j1, a0 + j, b0 + j1, b0 + j);
+    }
+  }
+  const posArr = new Float32Array(verts);
+  for (let i = 0; i < posArr.length; i += 3){
+    posArr[i + 1] = curH(posArr[i], posArr[i + 2]) + greenRelief(posArr[i], posArr[i + 2]) + 0.05;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(uvs), 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  if (greenTexObj) mat.map = greenTexObj;
+  const m = new THREE.Mesh(geo, mat);
+  courseGroup.add(m);
+  if (!greenTexObj){
+    new THREE.TextureLoader().load("tex/gtex_green.png?v=220", (tex) => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.magFilter = THREE.NearestFilter;
+      greenTexObj = tex; mat.map = tex; mat.needsUpdate = true;
+    }, undefined, () => { mat.color.set(0x83d97e); });
+  }
+}
 function buildGreenCup(){
   const gy = groundH(CUP.x, CUP.z);
-  const g = new THREE.Mesh(new THREE.CircleGeometry(GREEN_R, 40), new THREE.MeshLambertMaterial({ color:0x83d97e }));
-  g.rotation.x = -Math.PI/2; g.position.set(CUP.x, gy + 0.02, CUP.z); courseGroup.add(g);
+  buildGreenMesh();
   // カップ＆旗（2026-11-21 ユーザー指示で全体を従来の1/5に縮小。旗はロゴ入り絵 flag.png）
   const hole = new THREE.Mesh(new THREE.CircleGeometry(0.11, 20), new THREE.MeshBasicMaterial({ color:0x10240f }));
   hole.rotation.x = -Math.PI/2; hole.position.set(CUP.x, gy + 0.045, CUP.z); courseGroup.add(hole);
@@ -604,7 +689,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=211", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=220", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -756,12 +841,12 @@ function decorateForest(){
 /* ---- 装飾：コース4「海岸線」 ---- */
 function decorateCoast(){
   const zc = -(HOLE_LEN / 2) + 10, zl = HOLE_LEN + 220;
-  flatPlane(120, zl, new THREE.MeshLambertMaterial({ color:0xe4d193 }), 93, -9.97, zc);   // 砂浜
+  flatPlane(140, zl, new THREE.MeshLambertMaterial({ color:0xe4d193 }), 88, -9.97, zc);   // 砂浜（広げた分、左へ拡張）
   flatPlane(210, zl, new THREE.MeshPhongMaterial({ color:0x2f8fd0, transparent:true, opacity:0.82, shininess:120 }), 163, -9.86, zc);   // 海
   const R = rng(2024);
   for (let z = 0; z >= -(HOLE_LEN + 16); z -= 13 + R() * 10){
     if (R() < 0.8) tree(-(30 + R() * 26), z, 0.9 + R() * 0.7);          // 左側の木立
-    if (R() < 0.45) rock(26.5 + R() * 2, z - 4, 0.6 + R() * 0.7);       // 崖っぷちの岩
+    if (R() < 0.45) rock(17.5 + R() * 2, z - 4, 0.6 + R() * 0.7);       // 崖っぷちの岩
     if (R() < 0.3) rock(44 + R() * 30, z - 8, 0.7 + R() * 0.8);         // 砂浜の岩
   }
 }
@@ -1056,7 +1141,7 @@ const COURSE_BUILD = [
     decorate:decorateForest },
   { tex:"tex/gtex_grass.png", repX:46, repY:94, sky:0x9fd3ee, sun:0xfff2d8, sunI:0.8,
     h:heightCoast, surf:surfCoast, waters:[{ x0:58, x1:270, z0:-580, z1:90 }],
-    tintAt:(x, z) => x > 30 ? [1.0, 0.93, 0.72] : ((Math.abs(x) <= 22 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1, 1, 1] : [0.7, 0.76, 0.66]),
+    tintAt:(x, z) => x > 19 ? [1.0, 0.93, 0.72] : ((Math.abs(x) <= 11 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1, 1, 1] : [0.7, 0.76, 0.66]),
     decorate:decorateCoast },
   { tex:"tex/gtex_grass.png", repX:46, repY:55, sky:0x9fd3ee, sun:0xfff2d8, sunI:0.8,
     h:heightDrop, surf:surfDrop,
@@ -1119,6 +1204,7 @@ const COURSE_BUILD = [
 function buildCourse(i){
   const def = COURSE_BUILD[i];
   if (!def) return;
+  pickGreenPat();   // グリーンの形はコースを組むたびに6種からランダム
   if (courseGroup){
     scene.remove(courseGroup);
     courseGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); });
@@ -1206,32 +1292,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=211", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=211", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=220", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1265,7 +1351,7 @@ function effDist(){
   if (c.name === "PT") return Math.min(distToCup(), 60);
   return c.dist;
 }
-function onGreen(){ return distToCup() <= GREEN_R; }
+function onGreen(){ return inGreen(ball.position.x, ball.position.z); }
 /* 地面の種類と、跳ね（bounce）・転がり（roll）の係数（2026-11-22 ユーザー指示：
    ボールは地面の種類によって跳ねたり転がったりする） */
 const SURF = {
@@ -2314,7 +2400,10 @@ window.__golf = {
   loadCourse: i => loadCourse(i),
   skipIntro: () => endIntro(),
   intro: () => !!intro,
-  unlocked: () => settings.seen
+  unlocked: () => settings.seen,
+  greenPat: () => greenPat + 1,
+  greenName: () => GREEN_PATS[greenPat],
+  setGreenPat: (n) => { forcedGreenPat = n - 1; loadCourse(courseIdx); forcedGreenPat = null; }
 };
 </script>
 </body>
