@@ -8,17 +8,23 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { width:100%; height:100%; overflow:hidden; background:#79b5d9; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; touch-action:none; user-select:none; -webkit-user-select:none; }
-  #game { position:fixed; inset:0; }
+  #game { position:fixed; top:0; left:0; right:0; height:100vh; height:100dvh; height:var(--apph, 100dvh); }
   canvas { display:block; }
+  /* UI は「実際に見えている領域（visualViewport）」の高さに合わせたコンテナの中に置く。
+     ブラウザのツールバー表示状態でレイアウト側の高さだけ大きいと、下部の操作系が
+     画面外に落ちて見えなくなるケースへの対策（2026-11-22 ユーザー報告）。 */
+  #ui { position:fixed; top:0; left:0; width:100%; height:100vh; height:100dvh; height:var(--apph, 100dvh); z-index:5; pointer-events:none; }
+  #ui > * { pointer-events:none; }
+  #clubList, #setBtn, #stick, #shotBtn, #result, #settings { pointer-events:auto; }
 
   /* 上部情報 */
-  #topbar { position:fixed; top:8px; left:10px; z-index:10; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.55); pointer-events:none; }
+  #topbar { position:absolute; top:8px; left:10px; z-index:10; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.55); pointer-events:none; }
   #topbar .hole { font-size:17px; font-weight:700; letter-spacing:.02em; }
   #topbar .sub { font-size:13px; margin-top:2px; }
   #topbar .sub b { font-size:15px; }
 
   /* スイングゲージ */
-  #gaugeWrap { position:fixed; top:10px; left:50%; transform:translateX(-50%); width:min(520px,50vw); z-index:10; pointer-events:none; }
+  #gaugeWrap { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:min(520px,50vw); z-index:10; pointer-events:none; }
   #gaugeLabel { text-align:center; color:#fff; font-size:12px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.6); margin-bottom:3px; letter-spacing:.15em; }
   #gauge { position:relative; height:22px; background:linear-gradient(90deg,#e74c3c,#f1c40f 38%,#f1c40f 62%,#e74c3c); border:2px solid rgba(255,255,255,.85); border-radius:11px; box-shadow:0 2px 8px rgba(0,0,0,.35); overflow:hidden; }
   #bestZone { position:absolute; top:0; bottom:0; left:46%; width:8%; background:rgba(46,204,113,.85); border-left:2px solid #fff; border-right:2px solid #fff; }
@@ -26,7 +32,7 @@
   #gaugeMsg { text-align:center; color:#fff; font-size:14px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.65); margin-top:5px; min-height:19px; }
 
   /* クラブリスト（右上）：通常は最小化し、選択中のクラブだけ見せる。タップで展開（2026-11-22 ユーザー指示） */
-  #clubList { position:fixed; top:8px; right:8px; z-index:10; width:104px; background:rgba(12,26,18,.62); border:1px solid rgba(255,255,255,.35); border-radius:10px; padding:4px; backdrop-filter:blur(2px); }
+  #clubList { position:absolute; top:8px; right:8px; z-index:10; width:104px; background:rgba(12,26,18,.62); border:1px solid rgba(255,255,255,.35); border-radius:10px; padding:4px; backdrop-filter:blur(2px); }
   #clubHead { cursor:pointer; }
   #clubList .ttl { color:#ffe9a8; font-size:11px; font-weight:700; text-align:center; padding:2px 0 1px; letter-spacing:.1em; }
   #clubCur { color:#fff; font-size:15px; font-weight:800; text-align:center; padding:1px 0 3px; }
@@ -40,8 +46,8 @@
   .club.sel .d { color:#eaffea; }
 
   /* 設定ボタンと設定画面 */
-  #setBtn { position:fixed; top:74px; left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
-  #settings { position:fixed; inset:0; z-index:30; display:none; align-items:flex-start; justify-content:center; background:rgba(8,20,12,.5); overflow-y:auto; padding:26px 12px; }
+  #setBtn { position:absolute; top:74px; left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
+  #settings { position:absolute; inset:0; z-index:30; display:none; align-items:flex-start; justify-content:center; background:rgba(8,20,12,.5); overflow-y:auto; padding:26px 12px; }
   #settings .card { background:rgba(255,255,255,.97); border-radius:16px; padding:20px 22px; width:min(430px,94vw); box-shadow:0 8px 30px rgba(0,0,0,.4); }
   #settings h2 { font-size:18px; color:#14532d; margin-bottom:6px; }
   #settings h3 { font-size:13px; color:#33475b; margin:16px 0 7px; border-bottom:1px solid #dde5dd; padding-bottom:4px; }
@@ -58,25 +64,25 @@
   #setReset { background:#eef1ee; color:#a33; }
 
   /* スティック（左下） */
-  #stick { position:fixed; left:22px; bottom:26px; width:118px; height:118px; border-radius:50%; background:rgba(10,20,14,.38); border:2px solid rgba(255,255,255,.5); z-index:10; }
+  #stick { position:absolute; left:22px; bottom:calc(26px + env(safe-area-inset-bottom, 0px)); width:118px; height:118px; border-radius:50%; background:rgba(10,20,14,.38); border:2px solid rgba(255,255,255,.5); z-index:10; }
   #stick::before { content:"方向"; position:absolute; top:-19px; left:0; right:0; text-align:center; color:#fff; font-size:11px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.6); }
   #knob { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,255,255,.82); box-shadow:0 2px 6px rgba(0,0,0,.4); }
 
   /* ショットボタン（右下） */
-  #shotBtn { position:fixed; right:24px; bottom:30px; width:104px; height:104px; border-radius:50%; z-index:10;
+  #shotBtn { position:absolute; right:24px; bottom:calc(30px + env(safe-area-inset-bottom, 0px)); width:104px; height:104px; border-radius:50%; z-index:10;
     background:radial-gradient(circle at 35% 30%, #ff9d5c, #e8541d 70%); border:3px solid rgba(255,255,255,.85);
     color:#fff; font-size:19px; font-weight:800; letter-spacing:.08em; box-shadow:0 4px 14px rgba(0,0,0,.45); cursor:pointer; }
   #shotBtn:active, #shotBtn.hold { background:radial-gradient(circle at 35% 30%, #ffd35c, #e8a51d 70%); transform:scale(.96); }
   #shotBtn:disabled { opacity:.45; }
 
   /* 結果オーバーレイ */
-  #result { position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center; background:rgba(8,20,12,.45); }
+  #result { position:absolute; inset:0; z-index:20; display:none; align-items:center; justify-content:center; background:rgba(8,20,12,.45); }
   #result .card { background:rgba(255,255,255,.95); border-radius:16px; padding:26px 34px; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,.4); }
   #result .big { font-size:26px; font-weight:800; color:#14532d; }
   #result .detail { font-size:15px; color:#33475b; margin-top:8px; }
   #result button { margin-top:16px; padding:10px 26px; font-size:16px; font-weight:700; border:none; border-radius:9px; background:#2e9e57; color:#fff; cursor:pointer; }
 
-  #hint { position:fixed; bottom:6px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
+  #hint { position:absolute; bottom:calc(6px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
 
   /* 横向き（ランドスケープ）対応：低い画面でも UI が収まるように圧縮 */
   @media (orientation: landscape) and (max-height: 540px) {
@@ -100,6 +106,7 @@
 <body>
 <div id="game"></div>
 
+<div id="ui">
 <div id="topbar">
   <div class="hole">HOLE 1 ・ はじまりの野</div>
   <div class="sub">Par 4 ／ <span id="strokes">0</span> 打目 ・ 残り <b id="remain">350</b> m</div>
@@ -142,6 +149,7 @@
 </div></div>
 
 <div id="hint">スティック：方向 ／ SHOT：押してる間ゲージが往復、離すと打つ</div>
+</div><!-- /#ui -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -149,7 +157,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.8.0";
+const PAGE_VER = "0.9.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -357,14 +365,14 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
-  new THREE.TextureLoader().load("flag.png?v=080", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=090", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
 })();
 
 /* ============ ボール／キャラ／マーカー ============ */
-const BALL_R = 0.09;   // ボール半径（2026-11-21 ユーザー指摘で 0.24 → 0.09 に小型化）
+const BALL_R = 0.045;   // ボール半径（2026-11-21 に 0.24 → 0.09、2026-11-22 ユーザー指示でさらに半分）
 const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 18, 14),
   new THREE.MeshPhongMaterial({ color:0xffffff, shininess:60 }));
 ball.position.set(0, BALL_R, 0); scene.add(ball);
@@ -373,36 +381,11 @@ function blobShadow(r, opacity){
     new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity }));
   s.rotation.x = -Math.PI/2; s.position.y = 0.03; scene.add(s); return s;
 }
-const ballShadow = blobShadow(0.17, 0.3);
+const ballShadow = blobShadow(0.09, 0.3);
 const marker = new THREE.Mesh(new THREE.RingGeometry(0.30, 0.46, 32),
   new THREE.MeshBasicMaterial({ color:0xfff176, transparent:true, opacity:0.9, side:THREE.DoubleSide }));
 marker.rotation.x = -Math.PI/2; marker.position.y = 0.05; scene.add(marker);
-// 飛行中の目印（マップ状態でも見える光）
-const glowTex = (function(){
-  const c = document.createElement("canvas"); c.width = c.height = 64;
-  const x = c.getContext("2d");
-  const gr = x.createRadialGradient(32,32,2,32,32,30);
-  gr.addColorStop(0, "rgba(255,255,180,1)"); gr.addColorStop(1, "rgba(255,255,180,0)");
-  x.fillStyle = gr; x.fillRect(0,0,64,64);
-  return new THREE.CanvasTexture(c);
-})();
-const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, transparent:true, depthTest:false }));
-glow.scale.set(5, 5, 1); glow.visible = false; scene.add(glow);
-// 軌跡
-const TRAIL_MAX = 240;
-const trailPos = new Float32Array(TRAIL_MAX * 3);
-const trailGeo = new THREE.BufferGeometry();
-trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3));
-const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.6 }));
-trail.visible = false; trail.frustumCulled = false;   // 頂点を毎フレーム書き換えるため、初期位置（原点）基準のカリングで消えないようにする
-scene.add(trail);
-let trailN = 0;
-function trailReset(){ trailN = 0; trail.visible = true; trailGeo.setDrawRange(0, 0); }
-function trailPush(p){
-  if (trailN >= TRAIL_MAX) return;
-  trailPos[trailN*3] = p.x; trailPos[trailN*3+1] = p.y; trailPos[trailN*3+2] = p.z;
-  trailN++; trailGeo.setDrawRange(0, trailN); trailGeo.attributes.position.needsUpdate = true;
-}
+// ※ 飛行中のボールの光・軌跡の演出は置かない（2026-11-22 ユーザー指示「白いボールでよい」）
 // キャラ（フォールバック用のCanvas簡易スプライト：青チュニック＋赤マント＋茶髪。通常は golfer.png を使用）
 const charTex = (function(){
   const c = document.createElement("canvas"); c.width = 96; c.height = 144;
@@ -443,32 +426,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.747, FOLLOW_Y = 0.872;   // 人物割合 1990/2847 → アドレス（1990/2273）に換算
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=080", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=080", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=090", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -504,6 +487,21 @@ function effDist(){
 }
 function inLake(x, z){ return x > LAKE.x0 && x < LAKE.x1 && z < LAKE.z1 && z > LAKE.z0; }
 function onGreen(){ return distToCup() <= GREEN_R; }
+/* 地面の種類と、跳ね（bounce）・転がり（roll）の係数（2026-11-22 ユーザー指示：
+   ボールは地面の種類によって跳ねたり転がったりする） */
+const SURF = {
+  green:   { bounce:0.9,  roll:1.15 },   // よく転がる
+  fairway: { bounce:1.0,  roll:1.0 },    // 標準
+  rough:   { bounce:0.5,  roll:0.45 },   // 跳ねが死に、草で止まる
+  sand:    { bounce:0.15, roll:0.10 }    // ほぼ跳ねず、めり込んで止まる
+};
+function surfaceAt(x, z){
+  if (inLake(x, z)) return "water";
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (x > LAKE.x0 - 4 && x < LAKE.x1 + 4 && z < LAKE.z1 + 4 && z > LAKE.z0 - 4) return "sand";
+  if (Math.abs(x) <= 25 && z <= 35 && z >= -365) return "fairway";
+  return "rough";
+}
 
 /* ============ 設定（localStorage に保存） ============ */
 const CAM_PATTERNS = [
@@ -777,7 +775,7 @@ function fire(p){
   const isPutt = c.name === "PT";
   hitSound(best, isPutt);
   showMsg(best ? "ベストショット！" : (dN > 0.66 ? "大きく外れた…" : "少し外れた"), 1800);
-  trailReset(); glow.visible = true; marker.visible = false;
+  marker.visible = false;
   if (arrow) arrow.visible = false;
   // キャラ絵はスイングシーケンス側（animate）で管理する。ここでは発射時点のポーズ＝インパクトのまま。
   // camDelay：発射後この秒数まではスイング視点を保持し、キャラも表示したままにする（フィニッシュの余韻）。
@@ -816,13 +814,18 @@ function fire(p){
 function startRoll(){
   ball.position.y = BALL_R;
   if (inLake(ball.position.x, ball.position.z)) return water();
+  // 着地点の地面で跳ね・転がりが変わる（2026-11-22 ユーザー指示）
+  shot.surf = surfaceAt(ball.position.x, ball.position.z);
+  const sf = SURF[shot.surf] || SURF.fairway;
+  shot.rollDist *= sf.roll;
+  shot.hopH = Math.min(1.6, Math.abs(shot.impactVy || 0) * 0.055) * sf.bounce;
+  shot.rollT = 0;
   if (shot.rollDist <= 0.05) return finishShot();
   shot.rollV = Math.sqrt(2 * ROLL_A * shot.rollDist);
   state = "roll";
 }
 function finishShot(){
   ball.position.y = BALL_R;
-  glow.visible = false; trail.visible = false;
   if (distToCup() < 0.2) return holed();   // カップイン判定（見た目0.11より少し甘め）
   state = "aim";
   aimOffset = 0; knob.style.transform = "translate(0px,0)";
@@ -834,7 +837,6 @@ function water(){
   strokes++; strokesEl.textContent = strokes;
   showMsg("池ポチャ… 1罰で前の位置から打ち直し", 2400);
   ball.position.copy(prevBallPos); ball.position.y = BALL_R;
-  glow.visible = false; trail.visible = false;
   state = "aim";
   aimOffset = 0; knob.style.transform = "translate(0px,0)";
   placeChar(); marker.visible = true;
@@ -842,7 +844,7 @@ function water(){
 }
 function holed(){
   state = "done";
-  glow.visible = false; trail.visible = false; marker.visible = false;
+  marker.visible = false;
   ball.position.set(CUP.x, 0.04, CUP.z);
   cupSound();
   const d = strokes - PAR;
@@ -923,19 +925,23 @@ function animate(){
     ball.position.addScaledVector(shot.vel, dtF);
     if (ball.position.y > shot.apexY) shot.apexY = ball.position.y;
     if (ball.position.y < BALL_R) ball.position.y = BALL_R;
-    trailPush(ball.position); glow.position.copy(ball.position);
     const dx = ball.position.x - shot.origin.x, dz = ball.position.z - shot.origin.z;
     const traveled = Math.hypot(dx, dz);
-    if (traveled >= shot.carryDist || (ball.position.y <= BALL_R && shot.vel.y < 0)) startRoll();
+    if (traveled >= shot.carryDist || (ball.position.y <= BALL_R && shot.vel.y < 0)){ shot.impactVy = shot.vel.y; startRoll(); }
   } else if (state === "roll" && shot){
     shot.t += dt;
+    shot.rollT = (shot.rollT || 0) + dt;
     const a = shot.putt ? PUTT_A : ROLL_A;
     shot.rollV -= a * dt;
     if (shot.rollV <= 0){ shot.rollV = 0; finishShot(); }
     else {
       ball.position.addScaledVector(shot.dir, shot.rollV * dt);
-      ball.position.y = shot.putt ? BALL_R : BALL_R + Math.max(0, Math.sin(shot.t * 26)) * 0.04 * Math.max(0, Math.min(1, (shot.rollV - 12) / 30));
-      trailPush(ball.position); glow.position.copy(ball.position);
+      // 着地直後の跳ね：地面の硬さ（hopH）に応じて、減衰しながら3回ほど弾む
+      if (shot.putt) ball.position.y = BALL_R;
+      else if (shot.hopH > 0.02 && shot.rollT < 0.9){
+        const ph = shot.rollT / 0.9;
+        ball.position.y = BALL_R + shot.hopH * Math.abs(Math.sin(ph * Math.PI * 3)) * (1 - ph);
+      } else ball.position.y = BALL_R;
       const d = distToCup();
       if (d < 0.2 && shot.rollV < 8) holed();
       else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
@@ -952,11 +958,6 @@ function animate(){
     chara.visible = false; charShadow.visible = false;
   }
   // ボール影・マーカー
-  if (glow.visible && shot) {
-    // 光点は飛行中 1.6 倍の一定値（ボールが点にならない大きさを保つ）。パターは小さいまま
-    const gs = shot.putt ? 0.9 : 1.6;
-    glow.scale.set(gs, gs, 1);
-  }
   ballShadow.position.set(ball.position.x, 0.03, ball.position.z);
   marker.position.set(ball.position.x, 0.05, ball.position.z);
   const pulse = 1 + Math.sin(now * 0.006) * 0.18;
@@ -1027,12 +1028,20 @@ placeChar();
 animate();
 
 function onResize(){
-  camera.aspect = window.innerWidth / window.innerHeight;
+  // 実際に見えている領域（visualViewport）にキャンバスと UI コンテナの高さを合わせる。
+  // ツールバーの出入りでレイアウト側の高さと見える高さがずれても、操作系が画面外に落ちないようにする。
+  const vv = window.visualViewport;
+  const w = vv ? vv.width : window.innerWidth;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--apph", h + "px");
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(w, h);
 }
 window.addEventListener("resize", onResize);
-window.addEventListener("orientationchange", onResize);
+window.addEventListener("orientationchange", () => setTimeout(onResize, 60));
+if (window.visualViewport) window.visualViewport.addEventListener("resize", onResize);
+onResize();
 
 /* デバッグ／検証用API */
 window.__golf = {
@@ -1044,6 +1053,8 @@ window.__golf = {
   pattern: () => shot ? (shot.pattern || null) : null,
   camY: () => camera.position.y,
   occFaded: () => occluders.filter(u => u.goal < 1).length,
+  surf: (x, z) => surfaceAt(x, z),
+  shotSurf: () => shot ? (shot.surf || null) : null,
   select: i => { if (state === "aim") selectClub(i); },
   setAim: deg => { aimOffset = deg * Math.PI / 180; updateArrow(); },
   press: () => pressStart(),
