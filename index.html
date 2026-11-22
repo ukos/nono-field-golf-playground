@@ -25,6 +25,8 @@
   #ui > * { pointer-events:none; }
   #clubList, #setBtn, #stick, #shotBtn, #result, #settings, #droneBtn, #spinCtl, #birdBtn { pointer-events:auto; }
   #birdBtn { position:absolute; left:50%; bottom:25.5%; transform:translateX(-50%); z-index:16; display:none; padding:8px 20px; font-size:13px; font-weight:700; color:#fff; background:rgba(12,26,18,.65); border:1px solid rgba(255,255,255,.45); border-radius:999px; cursor:pointer; }
+  /* コースマップ（左側中間にスケルトン表示、2026-11-22 ユーザー指示） */
+  #minimap { position:absolute; left:10px; top:50%; transform:translateY(-50%); width:104px; height:168px; z-index:8; opacity:.62; background:rgba(8,20,12,.45); border:1px solid rgba(255,255,255,.3); border-radius:10px; pointer-events:none; }
 
   /* ロゴ画面（起動時スプラッシュ、2026-11-22 ユーザー指示） */
   #splash { position:fixed; top:0; left:0; width:var(--appw, 100%); height:100vh; height:100dvh; height:var(--apph, 100dvh); z-index:50; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4vh; cursor:pointer; transition:opacity .45s ease; }
@@ -117,6 +119,7 @@
     #setBtn { top:60px; }
     #droneBtn { top:94px; }
     #spinCtl { top:130px; }
+    #minimap { width:84px; height:136px; }
     #spinCtl button { font-size:10.5px; padding:4px 8px; }
     .club { padding:2px 6px; margin:1px 0; font-size:12px; }
     .club .d { font-size:10px; }
@@ -186,6 +189,7 @@
 
 <div id="introHint">コース紹介中…（タップでスキップ）</div>
 <button id="birdBtn">鳥瞰図で見る</button>
+<canvas id="minimap" width="208" height="336"></canvas>
 
 <div id="hint">スティック：方向 ／ SHOT：押してる間ゲージが往復、離すと打つ</div>
 </div><!-- /#ui -->
@@ -202,7 +206,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.24.0";
+const PAGE_VER = "0.24.1";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -375,6 +379,8 @@ function updateOccluders(){
    高さ関数・地面種別・水域はコースごとに buildCourse が差し替える。 */
 function smooth01(a, b, x){ const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 let curH = (x, z) => 0;
+let curDef = null, mmB = null, frameNo = 0, ballPosRef = null;   // コースマップ用（buildCourse(0) より前に宣言が必要。ball は buildCourse(0) の後に作られるため参照を後で差す）
+const mmCtx = document.getElementById("minimap").getContext("2d");
 function groundH(x, z){ return curH(x, z) + greenRelief(x, z); }
 let curWaterFn = (x, z) => false;
 function inLake(x, z){ return curWaterFn(x, z); }
@@ -626,7 +632,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=240", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=241", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -682,7 +688,7 @@ function buildGreenMesh(){
   const m = new THREE.Mesh(geo, mat);
   courseGroup.add(m);
   if (!greenTexObj){
-    new THREE.TextureLoader().load("tex/gtex_green.png?v=240", (tex) => {
+    new THREE.TextureLoader().load("tex/gtex_green.png?v=241", (tex) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.magFilter = THREE.NearestFilter;
       greenTexObj = tex; mat.map = tex; mat.needsUpdate = true;
@@ -701,7 +707,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=240", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=241", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -1217,6 +1223,7 @@ function buildCourse(i){
   const def = COURSE_BUILD[i];
   if (!def) return;
   pickGreenPat();   // グリーンの形はコースを組むたびに6種からランダム
+  curDef = def; setupMinimap(); drawMinimap();
   if (courseGroup){
     scene.remove(courseGroup);
     courseGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); });
@@ -1259,6 +1266,7 @@ function blobShadow(r, opacity){
     new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity }));
   s.rotation.x = -Math.PI/2; s.position.y = 0.03; scene.add(s); return s;
 }
+ballPosRef = ball.position;
 const ballShadow = blobShadow(0.09, 0.3);
 const marker = new THREE.Mesh(new THREE.RingGeometry(0.30, 0.46, 32),
   new THREE.MeshBasicMaterial({ color:0xfff176, transparent:true, opacity:0.9, side:THREE.DoubleSide }));
@@ -1304,32 +1312,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=240", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=240", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=241", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1613,6 +1621,42 @@ function toggleBird(){
   }
 }
 document.getElementById("birdBtn").addEventListener("click", () => toggleBird());
+/* ============ コースマップ（左側中間にスケルトン表示、2026-11-22 ユーザー指示） ============ */
+function setupMinimap(){
+  const raw = (COURSES[courseIdx].drone || [[0, 0], [CUP.x, CUP.z]]);
+  const xs = raw.map(p => p[0]).concat([CUP.x, 0]), zs = raw.map(p => p[1]).concat([CUP.z, 0]);
+  if (curDef && curDef.waters) for (const w of curDef.waters){ xs.push(w.x0, w.x1); zs.push(w.z0, w.z1); }
+  const m = 14;
+  mmB = { x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m, path: raw };
+}
+function drawMinimap(){
+  if (!mmB) return;
+  const W = 208, H = 336, ctx = mmCtx;
+  ctx.clearRect(0, 0, W, H);
+  const sc = Math.min(W / (mmB.x1 - mmB.x0), H / (mmB.z1 - mmB.z0));
+  const ox = (W - (mmB.x1 - mmB.x0) * sc) / 2, oy = (H - (mmB.z1 - mmB.z0) * sc) / 2;
+  const px = x => ox + (x - mmB.x0) * sc, py = z => oy + (z - mmB.z0) * sc;   // z が小さい（カップ側）が上
+  if (curDef && curDef.waters){   // 水域
+    ctx.fillStyle = "rgba(70,140,220,.8)";
+    for (const w of curDef.waters) ctx.fillRect(px(w.x0), py(w.z1), (w.x1 - w.x0) * sc, (w.z1 - w.z0) * sc);
+  }
+  ctx.strokeStyle = "rgba(235,242,230,.9)";   // コースライン（フェアウェイ／道路）
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(7, 18 * sc);
+  ctx.beginPath();
+  mmB.path.forEach((p, i) => { if (i === 0) ctx.moveTo(px(p[0]), py(p[1])); else ctx.lineTo(px(p[0]), py(p[1])); });
+  ctx.stroke();
+  ctx.fillStyle = "#69c24a";   // グリーン
+  ctx.beginPath(); ctx.arc(px(CUP.x), py(CUP.z), Math.max(6, GREEN_R * sc), 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#e33";      // カップ
+  ctx.beginPath(); ctx.arc(px(CUP.x), py(CUP.z), 3.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#bbb";      // ティー
+  ctx.beginPath(); ctx.arc(px(0), py(0), 3.4, 0, Math.PI * 2); ctx.fill();
+  if (ballPosRef){   // 現在のボール位置
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(0,0,0,.65)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px(ballPosRef.x), py(ballPosRef.z), 5.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+}
 function dronePose(){
   const p = Math.min(1, drone.t / drone.dur);
   const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;   // 緩やかに加減速
@@ -2443,6 +2487,7 @@ function animate(){
     }
   }
   camera.lookAt(lookCur);
+  if ((frameNo++ & 7) === 0) drawMinimap();   // コースマップは少し間引いて更新
   updateOccluders();   // カメラとキャラの間に入った建物・木・岩をスケルトン表示に
   if (state === "aim" || state === "hold" || state === "swing") remainEl.textContent = Math.round(distToCup());
   renderer.render(scene, camera);
