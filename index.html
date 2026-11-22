@@ -55,7 +55,7 @@
   #clubCur { color:#fff; font-size:15px; font-weight:800; text-align:center; padding:1px 0 3px; }
   #clubCur .d { color:#b9d6b9; font-size:11px; font-weight:400; margin-left:4px; }
   #clubCur .arw { color:#ffe9a8; font-size:10px; margin-left:5px; }
-  #clubItems { display:none; max-height:56vh; overflow-y:auto; }
+  #clubItems { display:none; overflow-y:auto; }   /* 高さは renderClubList が「7クラブ分」に実測で設定する */
   #clubList.open #clubItems { display:block; }
   .club { display:flex; justify-content:space-between; align-items:center; padding:4px 7px; margin:2px 0; border-radius:6px; color:#e8f2e8; font-size:13px; cursor:pointer; background:rgba(255,255,255,.06); }
   .club .d { color:#b9d6b9; font-size:11px; }
@@ -106,7 +106,7 @@
   /* 横向き（ランドスケープ）対応：低い画面でも UI が収まるように圧縮 */
   @media (orientation: landscape) and (max-height: 540px) {
     #clubList { width:92px; }
-    #clubItems { max-height:88vh; }
+    #clubItems { }
     #clubList .ttl { font-size:10px; padding:1px 0 2px; }
     #setBtn { top:60px; }
     .club { padding:2px 6px; margin:1px 0; font-size:12px; }
@@ -190,7 +190,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.20.1";
+const PAGE_VER = "0.21.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -379,7 +379,7 @@ function heightCoast(x, z){
   const f = Math.min(smooth01(10, 26, Math.hypot(x, z)), smooth01(14, 30, Math.hypot(x - CUP.x, z - CUP.z)));
   let h = roll * f;
   h *= 1 - smooth01(22, 32, x);            // 崖から先は平らに
-  return h - 5 * smooth01(26, 34, x);      // 右側は5m下の砂浜
+  return h - 10 * smooth01(26, 34, x);     // 右側は10m下の砂浜（2026-11-22 ユーザー指示で5m→10m）
 }
 function surfCoast(x, z){
   if (inLake(x, z)) return "water";
@@ -582,7 +582,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=201", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=210", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -604,7 +604,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=201", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=210", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -755,8 +755,8 @@ function decorateForest(){
 /* ---- 装飾：コース4「海岸線」 ---- */
 function decorateCoast(){
   const zc = -(HOLE_LEN / 2) + 10, zl = HOLE_LEN + 220;
-  flatPlane(120, zl, new THREE.MeshLambertMaterial({ color:0xe4d193 }), 93, -4.97, zc);   // 砂浜
-  flatPlane(210, zl, new THREE.MeshPhongMaterial({ color:0x2f8fd0, transparent:true, opacity:0.82, shininess:120 }), 163, -4.86, zc);   // 海
+  flatPlane(120, zl, new THREE.MeshLambertMaterial({ color:0xe4d193 }), 93, -9.97, zc);   // 砂浜
+  flatPlane(210, zl, new THREE.MeshPhongMaterial({ color:0x2f8fd0, transparent:true, opacity:0.82, shininess:120 }), 163, -9.86, zc);   // 海
   const R = rng(2024);
   for (let z = 0; z >= -(HOLE_LEN + 16); z -= 13 + R() * 10){
     if (R() < 0.8) tree(-(30 + R() * 26), z, 0.9 + R() * 0.7);          // 左側の木立
@@ -1205,32 +1205,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=201", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=201", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=210", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1319,7 +1319,24 @@ function viewPreset(){ return VIEW_PRESETS.find(p => p.id === settings.view) || 
 const clubListEl = document.getElementById("clubList");
 const clubItemsEl = document.getElementById("clubItems");
 const clubCurEl = document.getElementById("clubCur");
-document.getElementById("clubHead").addEventListener("click", () => clubListEl.classList.toggle("open"));
+document.getElementById("clubHead").addEventListener("click", () => {
+  clubListEl.classList.toggle("open");
+  if (clubListEl.classList.contains("open")){
+    const sel = clubItemsEl.querySelector(".club.sel");
+    if (sel) sel.scrollIntoView({ block:"nearest" });   // 選択中のクラブが見える位置までスクロール
+  }
+});
+/* クラブリストの高さは「7クラブ分」に実測で合わせる（横向きでも下のクラブが選べるように、2026-11-22 ユーザー指示） */
+function fitClubListHeight(){
+  const first = clubItemsEl.querySelector(".club");
+  if (!first) return;
+  const wasOpen = clubListEl.classList.contains("open");
+  if (!wasOpen){ clubItemsEl.style.display = "block"; clubItemsEl.style.visibility = "hidden"; }
+  const cs = getComputedStyle(first);
+  const rowH = first.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+  clubItemsEl.style.maxHeight = Math.round(rowH * 7) + "px";
+  if (!wasOpen){ clubItemsEl.style.display = ""; clubItemsEl.style.visibility = ""; }
+}
 function renderClubList(){
   clubItemsEl.innerHTML = "";
   for (const i of settings.bag){
@@ -1333,6 +1350,7 @@ function renderClubList(){
   }
   const c = CLUBS[clubIdx];
   clubCurEl.innerHTML = c.name + "<span class='d'>" + (c.dist ? c.dist + "m" : "自動") + "</span><span class='arw'>▾</span>";
+  fitClubListHeight();
 }
 const bestZone = document.getElementById("bestZone");
 const needle = document.getElementById("needle");
@@ -2246,6 +2264,7 @@ function onResize(){
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  if (typeof fitClubListHeight === "function") fitClubListHeight();   // 向きが変わると行の高さも変わる
 }
 window.addEventListener("resize", onResize);
 window.addEventListener("orientationchange", () => setTimeout(onResize, 60));
