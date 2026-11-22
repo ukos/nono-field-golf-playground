@@ -4,7 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>HD-2D フィールドゴルフ 試作（テストホール）</title>
-<link rel="icon" href="data:,">
+<!-- アプリアイコン（2026-11-22 ユーザー指定）：ユーザーのゲームロゴから生成。ホーム画面追加でこのアイコンになる -->
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FIELD GOLF">
+<meta name="theme-color" content="#1d5c38">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { width:100%; height:100%; overflow:hidden; background:#79b5d9; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; touch-action:none; user-select:none; -webkit-user-select:none; }
@@ -157,7 +165,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.9.0";
+const PAGE_VER = "0.10.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -365,7 +373,7 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
-  new THREE.TextureLoader().load("flag.png?v=090", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=100", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -426,32 +434,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.747, FOLLOW_Y = 0.872;   // 人物割合 1990/2847 → アドレス（1990/2273）に換算
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=090", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=090", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=100", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -615,8 +623,8 @@ function renderSettings(){
 }
 document.getElementById("setBtn").addEventListener("click", () => { renderSettings(); settingsEl.style.display = "flex"; });
 document.getElementById("setClose").addEventListener("click", () => { settingsEl.style.display = "none"; });
-document.getElementById("sndOn").addEventListener("change", () => { settings.sound = true; saveSettings(); });
-document.getElementById("sndOff").addEventListener("change", () => { settings.sound = false; saveSettings(); });
+document.getElementById("sndOn").addEventListener("change", () => { settings.sound = true; saveSettings(); soundApply(); });
+document.getElementById("sndOff").addEventListener("change", () => { settings.sound = false; saveSettings(); soundApply(); });
 document.getElementById("setReset").addEventListener("click", () => {
   settingsEl.style.display = "none";
   document.getElementById("result").style.display = "none";
@@ -650,7 +658,7 @@ window.addEventListener("keyup", e => { if (e.key === " " && state === "hold") r
 
 /* ============ 打球音（WebAudio ノイズ系） ============ */
 let AC = null;
-function audio(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); return AC; }
+function audio(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); startAmbience(); return AC; }
 function hitSound(best, putt){
   if (!settings.sound) return;
   try {
@@ -712,6 +720,229 @@ function cupSound(){
   } catch(e) {}
 }
 
+/* ============ BGM・環境音・地面別サウンド（2026-11-22 ユーザー指示） ============ */
+// 方針：BGM はのんべんだらりではなく爽快に。明るい長調・テンポ138・プラック音色の
+// パラパラした主旋律をループさせる。その上に風の音（サラサラ）、スイングの風切り
+// （シュパーン）、飛行中の風切り、地面の種類ごとの着地・転がり音を重ねる。
+// すべて生成音（WebAudio）で音声ファイルは使わない。新規の音は soundBus 経由で、
+// 設定のサウンド ON/OFF がバスごと効く（従来の効果音は個別に settings.sound を見る）。
+let busNode = null;
+function soundBus(ac){
+  if (!busNode){ busNode = ac.createGain(); busNode.gain.value = settings.sound ? 1 : 0; busNode.connect(ac.destination); }
+  return busNode;
+}
+function soundApply(){ if (busNode && AC) busNode.gain.setTargetAtTime(settings.sound ? 1 : 0, AC.currentTime, 0.03); }
+let noiseBuf = null;
+function getNoise(ac){
+  if (noiseBuf && noiseBuf.sampleRate === ac.sampleRate) return noiseBuf;
+  const len = ac.sampleRate * 2;
+  noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
+  const ch = noiseBuf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+  return noiseBuf;
+}
+function noiseSrc(ac, loop){ const s = ac.createBufferSource(); s.buffer = getNoise(ac); s.loop = !!loop; return s; }
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+/* ---- BGM：C→G→Am→F、8分音符×32ステップのループ ---- */
+const BGM_MEL = [76,0,79,0, 81,0,79,0, 74,0,79,0, 83,0,79,0, 81,0,84,0, 83,0,81,0, 81,0,79,0, 76,0,72,0];
+const BGM_BASS = [48, 43, 45, 41];
+const bgm = { on:false, step:0, nextT:0, timer:null };
+function pluck(m, t, vol){
+  const ac = AC;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = "triangle"; o.frequency.value = mtof(m);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.30);
+  o.connect(g).connect(soundBus(ac)); o.start(t); o.stop(t + 0.32);
+  const o2 = ac.createOscillator(), g2 = ac.createGain();
+  o2.type = "sine"; o2.frequency.value = mtof(m) * 2;
+  g2.gain.setValueAtTime(vol * 0.22, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o2.connect(g2).connect(soundBus(ac)); o2.start(t); o2.stop(t + 0.14);
+}
+function bassNote(m, t, vol, dur){
+  const ac = AC;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = "sine"; o.frequency.value = mtof(m);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(soundBus(ac)); o.start(t); o.stop(t + dur + 0.02);
+}
+function hatNoise(t, vol){
+  const ac = AC;
+  const src = noiseSrc(ac, false);
+  const hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 6500;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+  src.connect(hp).connect(g).connect(soundBus(ac)); src.start(t); src.stop(t + 0.06);
+}
+function kickPop(t){
+  const ac = AC;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = "sine";
+  o.frequency.setValueAtTime(130, t);
+  o.frequency.exponentialRampToValueAtTime(52, t + 0.09);
+  g.gain.setValueAtTime(0.16, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+  o.connect(g).connect(soundBus(ac)); o.start(t); o.stop(t + 0.12);
+}
+function scheduleStep(s, t){
+  const m = BGM_MEL[s];
+  if (m) pluck(m, t, 0.16);
+  if (s % 8 === 0){ bassNote(BGM_BASS[s / 8], t, 0.20, 0.34); kickPop(t); }
+  if (s % 8 === 4) bassNote(BGM_BASS[(s - 4) / 8] + 7, t, 0.10, 0.2);
+  if (s % 4 === 2) hatNoise(t, 0.045);
+}
+function bgmTick(){
+  if (!bgm.on || !AC) return;
+  const SPB = 60 / 138 / 2;   // テンポ138、8分音符
+  if (bgm.nextT < AC.currentTime - 0.1) bgm.nextT = AC.currentTime + 0.05;
+  while (bgm.nextT < AC.currentTime + 0.28){
+    scheduleStep(bgm.step, bgm.nextT);
+    bgm.nextT += SPB;
+    bgm.step = (bgm.step + 1) % 32;
+  }
+}
+function bgmStart(){
+  if (bgm.on || !AC) return;
+  bgm.on = true; bgm.step = 0; bgm.nextT = AC.currentTime + 0.08;
+  bgm.timer = setInterval(bgmTick, 90);
+}
+
+/* ---- 風の音（サラサラ）：常時の環境音 ---- */
+let windN = null;
+function windStart(){
+  if (windN || !AC) return;
+  try {
+    const ac = AC;
+    const src = noiseSrc(ac, true);
+    const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 480; bp.Q.value = 0.5;
+    const g = ac.createGain(); g.gain.value = 0.035;
+    const lfo = ac.createOscillator(); lfo.frequency.value = 0.07;
+    const lfoG = ac.createGain(); lfoG.gain.value = 170;
+    lfo.connect(lfoG).connect(bp.frequency); lfo.start();
+    const lfo2 = ac.createOscillator(); lfo2.frequency.value = 0.19;
+    const lfo2G = ac.createGain(); lfo2G.gain.value = 0.013;
+    lfo2.connect(lfo2G).connect(g.gain); lfo2.start();
+    src.connect(bp).connect(g).connect(soundBus(ac)); src.start();
+    windN = { src };
+  } catch(e) {}
+}
+let ambStarted = false;
+function startAmbience(){
+  if (ambStarted || !AC) return;
+  ambStarted = true;
+  bgmStart(); windStart();
+}
+
+/* ---- スイングの風切り（シュパーン） ---- */
+function whooshSound(){
+  if (!settings.sound) return;
+  try {
+    const ac = audio(), t = ac.currentTime;
+    const src = noiseSrc(ac, false);
+    const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(500, t);
+    bp.frequency.exponentialRampToValueAtTime(2600, t + 0.10);
+    bp.frequency.exponentialRampToValueAtTime(650, t + 0.30);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    src.connect(bp).connect(g).connect(soundBus(ac)); src.start(t); src.stop(t + 0.35);
+  } catch(e) {}
+}
+
+/* ---- 飛行中の風切り（ボールの速さに追随） ---- */
+let flyN = null;
+function flyWindStart(){
+  flyWindStop();
+  if (!AC) return;
+  try {
+    const ac = AC;
+    const src = noiseSrc(ac, true);
+    const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 900; bp.Q.value = 0.8;
+    const g = ac.createGain(); g.gain.value = 0;
+    src.connect(bp).connect(g).connect(soundBus(ac)); src.start();
+    flyN = { src, bp, g };
+  } catch(e) {}
+}
+function flyWindUpdate(speed){
+  if (!flyN || !AC) return;
+  const t = AC.currentTime;
+  flyN.g.gain.setTargetAtTime(Math.min(0.20, speed * 0.004), t, 0.08);
+  flyN.bp.frequency.setTargetAtTime(500 + speed * 22, t, 0.08);
+}
+function flyWindStop(){
+  if (!flyN) return;
+  const n = flyN; flyN = null;
+  try { n.g.gain.setTargetAtTime(0, AC.currentTime, 0.05); setTimeout(() => { try { n.src.stop(); } catch(e){} }, 350); } catch(e) {}
+}
+
+/* ---- 地面別の着地音 ---- */
+function landSound(surf, s){
+  if (!settings.sound) return;
+  try {
+    const ac = audio(), t = ac.currentTime;
+    const burst = (type, f, q, dur, vol, when) => {
+      const w = when || 0;
+      const src = noiseSrc(ac, false);
+      const fl = ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; if (q) fl.Q.value = q;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(vol, t + w);
+      g.gain.exponentialRampToValueAtTime(0.001, t + w + dur);
+      src.connect(fl).connect(g).connect(soundBus(ac)); src.start(t + w); src.stop(t + w + dur + 0.05);
+    };
+    const thump = (f, dur, vol) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(Math.max(40, f * 0.55), t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g).connect(soundBus(ac)); o.start(t); o.stop(t + dur + 0.02);
+    };
+    if (surf === "green"){ burst("lowpass", 850, 0, 0.09, 0.30 * s); thump(150, 0.10, 0.16 * s); }              // トスッ
+    else if (surf === "rough"){ burst("lowpass", 480, 0, 0.16, 0.42 * s); burst("bandpass", 2400, 0.7, 0.22, 0.07 * s, 0.03); }  // ボフッ＋草ずれ
+    else if (surf === "sand"){ burst("lowpass", 700, 0, 0.07, 0.50 * s); burst("lowpass", 500, 0, 0.16, 0.28 * s, 0.05); }       // ザシュッ
+    else { burst("bandpass", 1800, 1.0, 0.07, 0.50 * s); thump(190, 0.08, 0.20 * s); }                            // フェアウェイ：カツッ
+  } catch(e) {}
+}
+
+/* ---- 地面別の転がり音（転がっている間だけ鳴るループ） ---- */
+const ROLL_SND = {
+  fairway: { type:"bandpass", f:1500, q:0.7, base:0.055 },
+  green:   { type:"lowpass",  f:750,  q:0.5, base:0.040 },
+  rough:   { type:"bandpass", f:2300, q:0.6, base:0.060 },
+  sand:    { type:"lowpass",  f:500,  q:0.5, base:0.012 }
+};
+let rollN = null;
+function rollSoundStart(surf, scale){
+  rollSoundStop();
+  if (!AC) return;
+  const prm = ROLL_SND[surf] || ROLL_SND.fairway;
+  try {
+    const ac = AC;
+    const src = noiseSrc(ac, true);
+    const fl = ac.createBiquadFilter(); fl.type = prm.type; fl.frequency.value = prm.f; fl.Q.value = prm.q;
+    const g = ac.createGain(); g.gain.value = 0;
+    src.connect(fl).connect(g).connect(soundBus(ac)); src.start();
+    rollN = { src, g, base: prm.base * (scale || 1) };
+  } catch(e) {}
+}
+function rollSoundUpdate(v){
+  if (!rollN || !AC) return;
+  rollN.g.gain.setTargetAtTime(rollN.base * Math.min(1, v / 18), AC.currentTime, 0.06);
+}
+function rollSoundStop(){
+  if (!rollN) return;
+  const n = rollN; rollN = null;
+  try { n.g.gain.setTargetAtTime(0, AC.currentTime, 0.04); setTimeout(() => { try { n.src.stop(); } catch(e){} }, 300); } catch(e) {}
+}
+
 /* ============ ショット ============ */
 const shotBtn = document.getElementById("shotBtn");
 let snapCam = true;
@@ -736,6 +967,7 @@ function releaseShot(){
   if (state !== "hold") return;
   needle.style.display = "none";
   shotBtn.classList.remove("hold");
+  if (CLUBS[clubIdx].name !== "PT") whooshSound();   // スイングの風切り（シュパーン）
   if (CLUBS[clubIdx].name === "PT"){
     // パットはテークバック〜フォロースルーなし（2026-11-22 ユーザー指示）：アドレスとインパクトの2枚だけ。
     // 離した瞬間にインパクト絵で即発射し、そのまま保持する（swingStage=3 で後段のポーズ進行を止める）。
@@ -751,6 +983,7 @@ function releaseShot(){
   swingStage = 0;
   setCharaTex(texDown);   // ダウンスイング絵
 }
+document.addEventListener("pointerdown", () => { audio(); });   // 最初のタップで BGM・風の音を開始（自動再生制限対策）
 shotBtn.addEventListener("pointerdown", e => { e.preventDefault(); pressStart(); });
 shotBtn.addEventListener("pointerup", e => { e.preventDefault(); releaseShot(); });
 shotBtn.addEventListener("pointercancel", () => releaseShot());
@@ -786,6 +1019,7 @@ function fire(p){
     shot.rollDist = D;
     shot.rollV = Math.sqrt(2 * PUTT_A * Math.max(D, 0.01));
     state = "roll";
+    rollSoundStart(surfaceAt(ball.position.x, ball.position.z), 0.5);   // パットの転がり音（小さめ）
   } else {
     const D = c.dist * mult;
     const carry = D * c.carry;
@@ -795,6 +1029,7 @@ function fire(p){
     const v = Math.sqrt(carry * GRAV / Math.sin(2 * th));
     shot.vel = new THREE.Vector3(dir.x * v * Math.cos(th), v * Math.sin(th), dir.z * v * Math.cos(th));
     state = "fly";
+    flyWindStart();   // 飛行中の風切り
     // カメラ演出パターンの抽選（2026-11-22 ユーザー指示：劇的なパターンを複数用意しランダムに切り替える）
     const POOL = ["quarter", "quarter", "low", "top", "cup", "chase", "slow"];
     let pat = settings.cam === "random" ? POOL[Math.floor(Math.random() * POOL.length)] : settings.cam;
@@ -820,11 +1055,16 @@ function startRoll(){
   shot.rollDist *= sf.roll;
   shot.hopH = Math.min(1.6, Math.abs(shot.impactVy || 0) * 0.055) * sf.bounce;
   shot.rollT = 0;
+  shot.hopIdx = 0;
+  flyWindStop();
+  landSound(shot.surf, Math.min(1, Math.abs(shot.impactVy || 0) / 16 + 0.25));   // 地面別の着地音（落下が大きいほど強い）
+  rollSoundStart(shot.surf, 1);
   if (shot.rollDist <= 0.05) return finishShot();
   shot.rollV = Math.sqrt(2 * ROLL_A * shot.rollDist);
   state = "roll";
 }
 function finishShot(){
+  rollSoundStop(); flyWindStop();
   ball.position.y = BALL_R;
   if (distToCup() < 0.2) return holed();   // カップイン判定（見た目0.11より少し甘め）
   state = "aim";
@@ -833,6 +1073,7 @@ function finishShot(){
   suggestClub(); updateArrow(); snapCam = true;
 }
 function water(){
+  flyWindStop(); rollSoundStop();
   splashSound();
   strokes++; strokesEl.textContent = strokes;
   showMsg("池ポチャ… 1罰で前の位置から打ち直し", 2400);
@@ -846,6 +1087,7 @@ function holed(){
   state = "done";
   marker.visible = false;
   ball.position.set(CUP.x, 0.04, CUP.z);
+  rollSoundStop();
   cupSound();
   const d = strokes - PAR;
   const label = d <= -2 ? "イーグル！" : d === -1 ? "バーディー！" : d === 0 ? "パー" : d === 1 ? "ボギー" : "+" + d;
@@ -924,6 +1166,7 @@ function animate(){
     shot.vel.y -= GRAV * dtF;
     ball.position.addScaledVector(shot.vel, dtF);
     if (ball.position.y > shot.apexY) shot.apexY = ball.position.y;
+    flyWindUpdate(shot.vel.length());
     if (ball.position.y < BALL_R) ball.position.y = BALL_R;
     const dx = ball.position.x - shot.origin.x, dz = ball.position.z - shot.origin.z;
     const traveled = Math.hypot(dx, dz);
@@ -933,6 +1176,7 @@ function animate(){
     shot.rollT = (shot.rollT || 0) + dt;
     const a = shot.putt ? PUTT_A : ROLL_A;
     shot.rollV -= a * dt;
+    rollSoundUpdate(Math.max(shot.rollV, 0));
     if (shot.rollV <= 0){ shot.rollV = 0; finishShot(); }
     else {
       ball.position.addScaledVector(shot.dir, shot.rollV * dt);
@@ -941,6 +1185,8 @@ function animate(){
       else if (shot.hopH > 0.02 && shot.rollT < 0.9){
         const ph = shot.rollT / 0.9;
         ball.position.y = BALL_R + shot.hopH * Math.abs(Math.sin(ph * Math.PI * 3)) * (1 - ph);
+        const hi = Math.floor(ph * 3);
+        if (hi > (shot.hopIdx || 0)){ shot.hopIdx = hi; landSound(shot.surf, Math.max(0.12, (1 - ph) * 0.55)); }   // 跳ねの着地ごとに小さく
       } else ball.position.y = BALL_R;
       const d = distToCup();
       if (d < 0.2 && shot.rollV < 8) holed();
@@ -1054,6 +1300,7 @@ window.__golf = {
   camY: () => camera.position.y,
   occFaded: () => occluders.filter(u => u.goal < 1).length,
   surf: (x, z) => surfaceAt(x, z),
+  snd: () => ({ ac: AC ? AC.state : "none", bgm: bgm.on, step: bgm.step, wind: !!windN, fly: !!flyN, roll: !!rollN }),
   shotSurf: () => shot ? (shot.surf || null) : null,
   select: i => { if (state === "aim") selectClub(i); },
   setAim: deg => { aimOffset = deg * Math.PI / 180; updateArrow(); },
