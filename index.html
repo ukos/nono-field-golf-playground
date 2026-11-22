@@ -186,7 +186,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.17.1";
+const PAGE_VER = "0.18.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -232,9 +232,9 @@ const COURSES = [
   { name:"灼砂の砂漠",   par:5, len:460, ready:true },
   { name:"大渓谷",       par:3, len:180, ready:true },
   { name:"霞の竹林",     par:4, len:290, ready:true },
-  { name:"紅蓮の火山",   par:4, len:390 },
-  { name:"湿原",         par:4, len:280 },
-  { name:"黄昏の地",     par:5, len:520 }
+  { name:"紅蓮の火山",   par:4, len:390, ready:true },
+  { name:"湿原",         par:4, len:280, ready:true },
+  { name:"黄昏の地",     par:5, len:520, ready:true, cupX:-70, cupZ:450 }
 ];
 let courseIdx = 0;
 let HOLE_LEN = COURSES[0].len, PAR = COURSES[0].par;
@@ -512,6 +512,52 @@ function surfBamboo(x, z){
   if (Math.abs(x) <= 16 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
   return "rough";
 }
+/* ---- コース16「紅蓮の火山」：溶岩池はハザード、火口へ登る ---- */
+function heightVolcano(x, z){
+  const rise = 22 * smooth01(30, HOLE_LEN - 40, -z);
+  const roll = 1.3 * Math.sin(x * 0.03 + 0.8) * Math.sin(z * 0.026 + 2.0) + 0.6 * Math.sin(x * 0.06) * Math.sin(z * 0.05 + 1.1);
+  let f = Math.min(smooth01(10, 24, Math.hypot(x, z)), smooth01(14, 28, Math.hypot(x - CUP.x, z - CUP.z)));
+  f = Math.min(f, smooth01(12, 26, Math.hypot(x - 20, z + 150)), smooth01(12, 26, Math.hypot(x + 22, z + 262)));
+  return rise + roll * f;
+}
+function surfVolcano(x, z){
+  if (inLake(x, z)) return "water";
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x) <= 18 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
+  return "rough";
+}
+/* ---- コース17「湿原」：フェアウェイ以外は湿地で止まる。浅い池が点在 ---- */
+function heightMarsh(x, z){
+  const roll = 0.55 * Math.sin(x * 0.025 + 1.6) * Math.sin(z * 0.02 + 0.3) + 0.3 * Math.sin(x * 0.05) * Math.sin(z * 0.045 + 2.0);
+  let f = Math.min(smooth01(10, 24, Math.hypot(x, z)), smooth01(14, 28, Math.hypot(x - CUP.x, z - CUP.z)));
+  f = Math.min(f, smooth01(10, 20, Math.hypot(x - 26, z + 120)), smooth01(10, 20, Math.hypot(x + 28, z + 205)));
+  return roll * f;
+}
+function surfMarsh(x, z){
+  if (inLake(x, z)) return "water";
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x) <= 15 && z <= 35 && z >= -(HOLE_LEN + 15)) return "fairway";
+  return "marsh";
+}
+/* ---- コース18「黄昏の地」：最長。城壁の遺跡を回り込む ---- */
+function distSeg(px, pz, ax, az, bx, bz){
+  const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+  let t = L2 ? ((px - ax) * dx + (pz - az) * dz) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+function heightDusk(x, z){
+  const roll = 1.5 * Math.sin(x * 0.024 + 2.6) * Math.sin(z * 0.019 + 1.4) + 0.7 * Math.sin(x * 0.05 + 0.7) * Math.sin(z * 0.043);
+  const f = Math.min(smooth01(10, 26, Math.hypot(x, z)), smooth01(14, 30, Math.hypot(x - CUP.x, z - CUP.z)));
+  return roll * f;
+}
+function surfDusk(x, z){
+  if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
+  if (Math.abs(x + 38) <= 17 && z <= -228 && z >= -312) return "stone";          // 城壁まわりの石畳
+  if (Math.abs(x) <= 20 && z <= 35 && z >= -395) return "fairway";
+  if (distSeg(x, z, 0, -380, CUP.x, CUP.z) <= 20) return "fairway";              // 斜めの最終レグ
+  return "rough";
+}
 
 /* ============ コース構築 ============ */
 function buildGround(def){
@@ -532,7 +578,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=171", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=180", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -554,7 +600,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=171", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=180", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -894,6 +940,69 @@ function decorateBamboo(){
   }
   for (let i = 0; i < 7; i++) bamboo(-44 + R() * 88, CUP.z - 14 - R() * 10, 0.95 + R() * 0.3);
 }
+/* 葦の株（装飾のみ、当たり判定なし） */
+function reed(x, z, s){
+  const g = new THREE.Group();
+  const m = new THREE.MeshLambertMaterial({ color:0x6d7d3a });
+  const R = rng(Math.floor(x * 17 + z * 11) + 9000);
+  for (let i = 0; i < 6; i++){
+    const h = (1.3 + R() * 0.7) * s;
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, h, 4), m);
+    st.position.set((R() - 0.5) * 1.4 * s, h / 2, (R() - 0.5) * 1.4 * s);
+    st.rotation.z = (R() - 0.5) * 0.16;
+    g.add(st);
+  }
+  g.position.set(x, groundH(x, z), z);
+  courseGroup.add(g);
+}
+/* ---- 装飾：コース16「紅蓮の火山」 ---- */
+function decorateVolcano(){
+  const lavaM = new THREE.MeshBasicMaterial({ color:0xff5a14 });
+  const p1 = new THREE.Mesh(new THREE.CircleGeometry(15, 20), lavaM);
+  p1.rotation.x = -Math.PI / 2; p1.position.set(20, groundH(20, -150) + 0.06, -150); courseGroup.add(p1);
+  const p2 = new THREE.Mesh(new THREE.CircleGeometry(15, 20), lavaM);
+  p2.rotation.x = -Math.PI / 2; p2.position.set(-22, groundH(-22, -262) + 0.06, -262); courseGroup.add(p2);
+  const R = rng(1616);
+  for (let z = -14; z >= -(HOLE_LEN + 12); z -= 15 + R() * 12){
+    for (const side of [-1, 1]){
+      if (R() < 0.65) rock(side * (26 + R() * 34), z, 0.9 + R() * 1.2);
+      else if (R() < 0.3 && z > -120) tree(side * (30 + R() * 26), z - 5, 0.8 + R() * 0.4);
+    }
+  }
+  for (let i = 0; i < 9; i++){ const a2 = (i / 9) * Math.PI * 1.5 + 0.4; rock(CUP.x + Math.sin(a2) * 17, CUP.z - Math.cos(a2) * 15 - 4, 1.1 + R() * 0.7); }   // 火口縁の岩
+}
+/* ---- 装飾：コース17「湿原」 ---- */
+function decorateMarsh(){
+  flatPlane(22, 26, new THREE.MeshPhongMaterial({ color:0x39686e, transparent:true, opacity:0.9, shininess:80 }), 26, 0.05, -120);
+  flatPlane(24, 28, new THREE.MeshPhongMaterial({ color:0x39686e, transparent:true, opacity:0.9, shininess:80 }), -28, 0.05, -205);
+  const R = rng(1717);
+  for (let i = 0; i < 90; i++){
+    const x = (R() - 0.5) * 190, z = -R() * (HOLE_LEN + 30) + 6;
+    if (Math.abs(x) < 13 && z < 30) continue;
+    if (Math.hypot(x - CUP.x, z - CUP.z) < 15) continue;
+    reed(x, z, 0.9 + R() * 0.5);
+  }
+  for (let z = -20; z >= -(HOLE_LEN + 6); z -= 34 + R() * 22){
+    if (R() < 0.6) tree((R() < 0.5 ? -1 : 1) * (44 + R() * 40), z, 0.75 + R() * 0.4);
+    if (R() < 0.4) rock((R() < 0.5 ? -1 : 1) * (24 + R() * 20), z - 9, 0.6 + R() * 0.6);
+  }
+}
+/* ---- 装飾：コース18「黄昏の地」 ---- */
+function decorateDusk(){
+  const R = rng(1818);
+  // 城壁の遺跡（L字の壁。石畳エリアの縁に立つ）
+  building(-38, -224, 46, 3, 6.5, 0x6a655c); building(-59, -262, 3, 42, 5.5, 0x736d61);
+  building(-38, -316, 40, 3, 4.2, 0x655f55); building(-14, -262, 3, 30, 3.4, 0x7a7468);
+  rock(-52, -238, 1.3); rock(-24, -292, 1.1); rock(-44, -318, 0.9);
+  for (let z = -10; z >= -(HOLE_LEN + 30); z -= 16 + R() * 12){
+    for (const side of [-1, 1]){
+      const bx = side * (30 + R() * 38) + (z < -370 ? (CUP.x * (-z - 370) / 110) : 0);
+      if (R() < 0.62) tree(bx, z, 0.9 + R() * 0.6);
+      else if (R() < 0.4) rock(bx, z - 4, 0.8 + R() * 0.9);
+    }
+  }
+  rock(CUP.x + 13, CUP.z - 9, 1.2); rock(CUP.x - 13, CUP.z - 9, 1.0);
+}
 /* ---- 装飾：コース12「白嶺の雪山」 ---- */
 function decorateSnow(){
   const R = rng(1212);
@@ -967,7 +1076,19 @@ const COURSE_BUILD = [
   { tex:"tex/gtex_forest.png", repX:46, repY:74, sky:0xcfe0da, sun:0xf2f5e8, sunI:0.55, fogNear:40, fogFar:280,
     h:heightBamboo, surf:surfBamboo,
     tintAt:(x, z) => (Math.abs(x) <= 16 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1.05, 1.05, 0.95] : [0.72, 0.78, 0.68],
-    decorate:decorateBamboo }
+    decorate:decorateBamboo },
+  { tex:"tex/gtex_lavarock.png", repX:46, repY:92, sky:0x6e3a30, sun:0xff9a60, sunI:0.65, hemi:0.55,
+    h:heightVolcano, surf:surfVolcano, waters:[{ x0:9, x1:31, z0:-161, z1:-139 }, { x0:-33, x1:-11, z0:-273, z1:-251 }],
+    tintAt:(x, z) => (Math.abs(x) <= 18 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1.12, 0.98, 0.88] : [0.82, 0.72, 0.68],
+    decorate:decorateVolcano },
+  { tex:"tex/gtex_marsh.png", repX:46, repY:70, sky:0xb9c9bd, sun:0xf5efdc, sunI:0.6, hemi:0.75,
+    h:heightMarsh, surf:surfMarsh, waters:[{ x0:15, x1:37, z0:-133, z1:-107 }, { x0:-40, x1:-16, z0:-219, z1:-191 }],
+    tintAt:(x, z) => (Math.abs(x) <= 15 && z <= 35 && z >= -(HOLE_LEN + 15)) ? [1.06, 1.04, 0.9] : [0.9, 0.92, 0.8],
+    decorate:decorateMarsh },
+  { tex:"tex/gtex_grass.png", repX:46, repY:112, sky:0x58406b, sun:0xffb37a, sunI:0.55, hemi:0.6,
+    h:heightDusk, surf:surfDusk,
+    tintAt:(x, z) => [0.88, 0.78, 0.86],
+    decorate:decorateDusk }
 ];
 function buildCourse(i){
   const def = COURSE_BUILD[i];
@@ -1059,32 +1180,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=171", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=171", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=180", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
