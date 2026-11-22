@@ -44,7 +44,7 @@
   #topbar .sub b { font-size:15px; }
 
   /* スイングゲージ */
-  #gaugeWrap { position:absolute; top:86px; left:50%; transform:translateX(-50%); width:min(520px,42vw); z-index:10; pointer-events:none; }
+  #gaugeWrap { position:absolute; top:122px; left:50%; transform:translateX(-50%); width:min(520px,42vw); z-index:10; pointer-events:none; }
   #gaugeLabel { text-align:center; color:#fff; font-size:12px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.6); margin-bottom:3px; letter-spacing:.15em; }
   #gauge { position:relative; height:22px; background:linear-gradient(90deg,#e74c3c,#f1c40f 38%,#f1c40f 62%,#e74c3c); border:2px solid rgba(255,255,255,.85); border-radius:11px; box-shadow:0 2px 8px rgba(0,0,0,.35); overflow:hidden; }
   #bestZone { position:absolute; top:0; bottom:0; left:46%; width:8%; background:rgba(46,204,113,.85); border-left:2px solid #fff; border-right:2px solid #fff; }
@@ -66,7 +66,7 @@
   .club.sel .d { color:#eaffea; }
 
   /* 設定ボタンと設定画面 */
-  #setBtn { position:absolute; top:84px; left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
+  #setBtn { position:absolute; top:122px; left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
   #settings { position:absolute; inset:0; z-index:30; display:none; align-items:flex-start; justify-content:center; background:rgba(8,20,12,.5); overflow-y:auto; padding:26px 12px; }
   #settings .card { background:rgba(255,255,255,.97); border-radius:16px; padding:20px 22px; width:min(430px,94vw); box-shadow:0 8px 30px rgba(0,0,0,.4); }
   #settings h2 { font-size:18px; color:#14532d; margin-bottom:6px; }
@@ -103,11 +103,11 @@
   #result button { margin-top:16px; padding:10px 26px; font-size:16px; font-weight:700; border:none; border-radius:9px; background:#2e9e57; color:#fff; cursor:pointer; }
   #result button.sub { background:#e8eef2; color:#33475b; margin-left:8px; }
   #introHint { position:absolute; left:50%; bottom:19%; transform:translateX(-50%); z-index:15; display:none; background:rgba(10,25,15,.55); color:#fff; font-size:13px; padding:7px 16px; border-radius:999px; pointer-events:none; }
-  #spinCtl { position:absolute; top:162px; left:50%; transform:translateX(-50%); z-index:10; display:flex; gap:4px; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.35); border-radius:999px; padding:3px; }
+  #spinCtl { position:absolute; top:178px; left:50%; transform:translateX(-50%); z-index:10; display:flex; gap:4px; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.35); border-radius:999px; padding:3px; }
   #spinCtl button { border:none; background:transparent; color:#dfe9df; font-size:11.5px; font-weight:700; padding:5px 11px; border-radius:999px; cursor:pointer; white-space:nowrap; }
   #spinCtl button.sel { background:#2e9e57; color:#fff; }
   #spinCtl.off { opacity:.38; pointer-events:none; }
-  #droneBtn { position:absolute; top:122px; left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
+  #droneBtn { position:absolute; top:calc(50% - 122px); left:10px; z-index:10; padding:6px 13px; font-size:12px; font-weight:700; color:#fff; background:rgba(12,26,18,.55); border:1px solid rgba(255,255,255,.4); border-radius:16px; cursor:pointer; }
 
   #hint { position:absolute; bottom:calc(6px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); color:rgba(255,255,255,.85); font-size:11px; text-shadow:0 1px 2px rgba(0,0,0,.6); z-index:9; pointer-events:none; white-space:nowrap; }
 
@@ -116,8 +116,9 @@
     #clubList { width:92px; }
     #clubItems { }
     #clubList .ttl { font-size:10px; padding:1px 0 2px; }
-    #setBtn { top:70px; }
-    #droneBtn { top:104px; }
+    #setBtn { top:84px; }
+    #gaugeWrap { top:84px; }
+    #droneBtn { top:calc(56% - 102px); }
     #spinCtl { top:160px; }
     #minimap { width:84px; height:128px; top:56%; }
     #spinCtl button { font-size:10.5px; padding:4px 8px; }
@@ -145,7 +146,6 @@
 </div>
 
 <div id="gaugeWrap">
-  <div id="gaugeLabel">SWING</div>
   <div id="gauge"><div id="bestZone"></div><div id="needle"></div></div>
   <div id="gaugeMsg"></div>
 </div>
@@ -207,7 +207,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.24.3";
+const PAGE_VER = "0.24.4";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -633,7 +633,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=243", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=244", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -689,7 +689,7 @@ function buildGreenMesh(){
   const m = new THREE.Mesh(geo, mat);
   courseGroup.add(m);
   if (!greenTexObj){
-    new THREE.TextureLoader().load("tex/gtex_green.png?v=243", (tex) => {
+    new THREE.TextureLoader().load("tex/gtex_green.png?v=244", (tex) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.magFilter = THREE.NearestFilter;
       greenTexObj = tex; mat.map = tex; mat.needsUpdate = true;
@@ -708,7 +708,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=243", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=244", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -1313,32 +1313,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.712, FOLLOW_Y = 0.865;   // v0.17：+5°追加回転（計15°）：縦スパン 1941→1951px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=243", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=243", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=244", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
