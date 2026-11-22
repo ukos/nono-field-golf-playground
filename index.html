@@ -81,14 +81,14 @@
   #setReset { background:#eef1ee; color:#a33; }
 
   /* スティック（左下） */
-  #stick { position:absolute; left:22px; bottom:calc(26px + env(safe-area-inset-bottom, 0px)); width:118px; height:118px; border-radius:50%; background:rgba(10,20,14,.38); border:2px solid rgba(255,255,255,.5); z-index:10; }
+  #stick { position:absolute; left:22px; bottom:calc(26px + env(safe-area-inset-bottom, 0px)); width:59px; height:59px; border-radius:50%; background:rgba(10,20,14,.38); border:2px solid rgba(255,255,255,.5); z-index:10; }
   #stick::before { content:"方向"; position:absolute; top:-19px; left:0; right:0; text-align:center; color:#fff; font-size:11px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.6); }
-  #knob { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,255,255,.82); box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  #knob { position:absolute; left:50%; top:50%; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%; background:rgba(255,255,255,.82); box-shadow:0 2px 6px rgba(0,0,0,.4); }
 
   /* ショットボタン（右下） */
-  #shotBtn { position:absolute; right:24px; bottom:calc(30px + env(safe-area-inset-bottom, 0px)); width:104px; height:104px; border-radius:50%; z-index:10;
-    background:radial-gradient(circle at 35% 30%, #ff9d5c, #e8541d 70%); border:3px solid rgba(255,255,255,.85);
-    color:#fff; font-size:19px; font-weight:800; letter-spacing:.08em; box-shadow:0 4px 14px rgba(0,0,0,.45); cursor:pointer; }
+  #shotBtn { position:absolute; right:24px; bottom:calc(30px + env(safe-area-inset-bottom, 0px)); width:52px; height:52px; border-radius:50%; z-index:10;
+    background:radial-gradient(circle at 35% 30%, #ff9d5c, #e8541d 70%); border:2px solid rgba(255,255,255,.85);
+    color:#fff; font-size:11px; font-weight:800; letter-spacing:.05em; box-shadow:0 4px 14px rgba(0,0,0,.45); cursor:pointer; }
   #shotBtn:active, #shotBtn.hold { background:radial-gradient(circle at 35% 30%, #ffd35c, #e8a51d 70%); transform:scale(.96); }
   #shotBtn:disabled { opacity:.45; }
 
@@ -109,9 +109,9 @@
     #setBtn { top:60px; }
     .club { padding:2px 6px; margin:1px 0; font-size:12px; }
     .club .d { font-size:10px; }
-    #shotBtn { width:80px; height:80px; font-size:16px; right:16px; bottom:16px; }
-    #stick { width:92px; height:92px; left:16px; bottom:16px; }
-    #knob { width:42px; height:42px; margin:-21px 0 0 -21px; }
+    #shotBtn { width:40px; height:40px; font-size:10px; right:16px; bottom:16px; }
+    #stick { width:46px; height:46px; left:16px; bottom:16px; }
+    #knob { width:21px; height:21px; margin:-10.5px 0 0 -10.5px; }
     #gaugeWrap { width:40vw; }
     #topbar .hole { font-size:13px; }
     #topbar .sub { font-size:11px; }
@@ -180,7 +180,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.11.1";
+const PAGE_VER = "0.11.2";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -388,7 +388,7 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
-  new THREE.TextureLoader().load("flag.png?v=111", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=112", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -449,32 +449,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.747, FOLLOW_Y = 0.872;   // 人物割合 1990/2847 → アドレス（1990/2273）に換算
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=111", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=111", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=112", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
