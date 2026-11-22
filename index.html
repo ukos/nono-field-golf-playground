@@ -125,8 +125,8 @@
 
 <div id="ui">
 <div id="topbar">
-  <div class="hole">HOLE 1 ・ はじまりの野</div>
-  <div class="sub">Par 4 ／ <span id="strokes">0</span> 打目 ・ 残り <b id="remain">350</b> m</div>
+  <div class="hole" id="holeName">HOLE 1 ・ 草原</div>
+  <div class="sub">Par <span id="parNum">4</span> ／ <span id="strokes">0</span> 打目 ・ 残り <b id="remain">350</b> m ・ <span id="lie"></span></div>
 </div>
 
 <div id="gaugeWrap">
@@ -153,6 +153,12 @@
   <div class="chips" id="viewChips"></div>
   <h3>サウンド</h3>
   <div class="row"><label><input type="radio" name="snd" id="sndOn"> ON</label><label><input type="radio" name="snd" id="sndOff"> OFF</label></div>
+  <h3>コース</h3>
+  <div class="chips" id="courseChips"></div>
+  <div class="note">全18コースを順次追加中です。「準備中」はまだ遊べません。</div>
+  <h3>ギブアップ</h3>
+  <div class="btns"><button id="giveUpBtn">このホールをギブアップ（+10）</button></div>
+  <div class="note">ギブアップすると、このホールの打数＋ペナルティ10打でホールアウトし、合計スコアに記録されます。</div>
   <div class="btns"><button id="setReset">ホールを最初から</button><button id="setClose">閉じる</button></div>
 </div></div>
 
@@ -180,7 +186,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.11.8";
+const PAGE_VER = "0.12.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -208,8 +214,32 @@ const CLUBS = [
   { name:"SW", dist: 70, angle:45, carry:0.97, gauge:1.25, best:18 },
   { name:"PT", dist:  0, angle: 0, carry:0.00, gauge:1.30, best:20 }
 ];
-const HOLE_LEN = 350, PAR = 4;
+/* コース一覧（2026-11-22 仕様 v3.0 §11：全18コース。1〜9はユーザー決定、10〜18は nono 提案をユーザーが採用）
+   ready:true のコースだけ遊べる。基盤（起伏・当たり判定・ライ係数）はコース共通。 */
+const COURSES = [
+  { name:"草原",         par:4, len:350, ready:true,  air:1.0 },
+  { name:"都会（早朝）", par:4, len:320 },
+  { name:"林",           par:4, len:380 },
+  { name:"海岸線",       par:5, len:480 },
+  { name:"打ち降ろし",   par:3, len:50 },
+  { name:"高原",         par:4, len:360 },
+  { name:"砂浜",         par:4, len:300 },
+  { name:"山の上",       par:5, len:450 },
+  { name:"都会（深夜）", par:4, len:340 },
+  { name:"機械遺跡",     par:4, len:330 },
+  { name:"ジャングル",   par:4, len:310 },
+  { name:"白嶺の雪山",   par:4, len:370 },
+  { name:"灼砂の砂漠",   par:5, len:460 },
+  { name:"大渓谷",       par:3, len:180 },
+  { name:"霞の竹林",     par:4, len:290 },
+  { name:"紅蓮の火山",   par:4, len:390 },
+  { name:"湿原",         par:4, len:280 },
+  { name:"黄昏の地",     par:5, len:520 }
+];
+let courseIdx = 0;
+let HOLE_LEN = COURSES[0].len, PAR = COURSES[0].par;
 const CUP = new THREE.Vector3(0, 0, -HOLE_LEN);
+let totalScore = 0;   // ホールアウト／ギブアップで加算される合計スコア
 const GREEN_R = 14;
 const LAKE = { x0:30, x1:98, z0:-272, z1:-118 };   // 右側の湖
 const GRAV = 13, ROLL_A = 65, PUTT_A = 12;
@@ -291,13 +321,54 @@ function updateOccluders(){
   }
 }
 
+/* ============ 地形（ローポリ起伏）と当たり判定 ============
+   groundH(x,z) が地形の高さの正本。地面メッシュ・物理・配置はすべてこれに従う。
+   ティー／グリーン／湖の周辺は平らに均す。 */
+function smooth01(a, b, x){ const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+function groundH(x, z){
+  let h = 1.15 * Math.sin(x * 0.021 + 1.7) * Math.sin(z * 0.0165)
+        + 0.75 * Math.sin(x * 0.045 + 0.4) * Math.sin(z * 0.033 + 0.6)
+        + 0.35 * Math.sin(x * 0.11) * Math.sin(z * 0.09 + 2.1);
+  let f = Math.min(smooth01(10, 26, Math.hypot(x, z)), smooth01(14, 30, Math.hypot(x - CUP.x, z - CUP.z)));
+  const dxL = Math.max(LAKE.x0 - 6 - x, 0, x - (LAKE.x1 + 6));
+  const dzL = Math.max(LAKE.z0 - 6 - z, 0, z - (LAKE.z1 + 6));
+  f = Math.min(f, smooth01(0, 14, Math.hypot(dxL, dzL)));
+  return h * f;
+}
+const colliders = [];   // { x, z, r（飛行中の判定半径）, gr（転がり中の判定半径）, h（高さ） }
 /* ============ コース ============ */
 function plane(w, l, color, x, z, y){
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), new THREE.MeshLambertMaterial({ color }));
   m.rotation.x = -Math.PI/2; m.position.set(x, y||0, z); scene.add(m); return m;
 }
-plane(500, 900, 0x3f8f4e, 0, -160, -0.05);                 // ラフ全体
-plane(50, 400, 0x63c168, 0, -165, 0);                      // フェアウェイ
+// 地面：起伏ハイトフィールドに NONO の地面テクスチャ（gtex）を全面敷き、
+// 頂点カラーでフェアウェイ（明）／ラフ（暗）を塗り分ける
+let groundMesh;
+{
+  const geo = new THREE.PlaneGeometry(500, 900, 125, 225);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++){
+    const x = pos.getX(i), z = pos.getZ(i) - 160;
+    pos.setY(i, groundH(x, z));
+    pos.setZ(i, z);
+    const fw = Math.abs(x) <= 25 && z <= 35 && z >= -365;
+    colors[i * 3] = fw ? 1.0 : 0.66; colors[i * 3 + 1] = fw ? 1.0 : 0.72; colors[i * 3 + 2] = fw ? 1.0 : 0.64;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  groundMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
+  scene.add(groundMesh);
+  new THREE.TextureLoader().load("tex/gtex_grass.png?v=120", (tex) => {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(46, 82);
+    tex.magFilter = THREE.NearestFilter;
+    groundMesh.material.map = tex;
+    groundMesh.material.color.set(0xffffff);
+    groundMesh.material.needsUpdate = true;
+  }, undefined, () => { /* 読めなければ頂点カラーの緑で表示 */ });
+}
 (function(){ // グリーン
   const g = new THREE.Mesh(new THREE.CircleGeometry(GREEN_R, 40), new THREE.MeshLambertMaterial({ color:0x83d97e }));
   g.rotation.x = -Math.PI/2; g.position.set(CUP.x, 0.02, CUP.z); scene.add(g);
@@ -336,15 +407,17 @@ function tree(x, z, s){
       new THREE.MeshLambertMaterial({ color:greens[i%3] }));
     c.position.y = (2.6 + i*1.5)*s; g.add(c);
   }
-  g.position.set(x, 0, z); g.rotation.y = rand()*Math.PI; scene.add(g);
+  g.position.set(x, groundH(x, z), z); g.rotation.y = rand()*Math.PI; scene.add(g);
   regOccluder(g);
+  colliders.push({ x, z, r: 1.5 * s, gr: 0.55 * s, h: 8.5 * s });   // 木：飛行中は樹冠、転がり中は幹に当たる
 }
 function rock(x, z, s){
   const r = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4*s, 0),
     new THREE.MeshLambertMaterial({ color:0x8d99a4 }));
-  r.position.set(x, 0.7*s, z); r.rotation.set(rand()*3, rand()*3, rand()*3);
+  r.position.set(x, groundH(x, z) + 0.7*s, z); r.rotation.set(rand()*3, rand()*3, rand()*3);
   r.scale.y = 0.7; scene.add(r);
   regOccluder(r);
+  colliders.push({ x, z, r: 1.35 * s, gr: 1.35 * s, h: 1.7 * s });
 }
 for (let z=-8; z>=-372; z-=11+rand()*9){
   for (const side of [-1, 1]){
@@ -367,15 +440,17 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
   }
   const top = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.62, 0.8), red); top.position.y = 6.6; g.add(top);
   const mid = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.45, 0.6), red); mid.position.y = 5.2; g.add(mid);
-  g.position.set(0, 0, CUP.z - 9); scene.add(g);
+  g.position.set(0, groundH(0, CUP.z - 9), CUP.z - 9); scene.add(g);
   regOccluder(g);
+  colliders.push({ x:-3.4, z:CUP.z - 9, r:0.45, gr:0.45, h:6.4 }, { x:3.4, z:CUP.z - 9, r:0.45, gr:0.45, h:6.4 });   // 鳥居の柱（間は抜けられる）
   const shrine = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 1.6), new THREE.MeshLambertMaterial({ color:0xd8cfc0 }));
   body.position.y = 0.9; shrine.add(body);
   const roof = new THREE.Mesh(new THREE.ConeGeometry(2.4, 1.1, 4), new THREE.MeshLambertMaterial({ color:0x5b4632 }));
   roof.position.y = 2.35; roof.rotation.y = Math.PI/4; shrine.add(roof);
-  shrine.position.set(0, 0, CUP.z - 13.5); scene.add(shrine);
+  shrine.position.set(0, groundH(0, CUP.z - 13.5), CUP.z - 13.5); scene.add(shrine);
   regOccluder(shrine);
+  colliders.push({ x:0, z:CUP.z - 13.5, r:1.7, gr:1.7, h:2.9 });
 })();
 // カップ＆旗（2026-11-21 ユーザー指示で全体を従来の1/5に縮小。旗はロゴ入り絵 flag.png）
 (function(){
@@ -388,7 +463,7 @@ for (let i=0;i<10;i++) tree(-60+rand()*120, -378-rand()*16, 1+rand()*0.7);  // �
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x+0.34, 1.23, CUP.z); scene.add(flag);   // 旗布は従来の2倍、上辺がポール上端付近に来る位置
   // ロゴ入り旗の絵が読めたら差し替える。失敗時は赤い旗のまま（フォールバック）。
-  new THREE.TextureLoader().load("flag.png?v=118", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=120", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -441,7 +516,7 @@ function setCharaTex(tex, h, cy){
   const H = h || CHAR_H;
   const w = H * tex.image.width / tex.image.height;
   chara.scale.set(w, H, 1);
-  if (cy !== undefined) chara.position.y = cy;
+  if (cy !== undefined) chara.position.y = groundH(chara.position.x, chara.position.z) + cy;   // cy は地面からの高さ
 }
 /* フォロー／フィニッシュ（背面絵）はキャンバスに占める人物の割合が他と違う（フォローは
    クラブを描き切るためキャンバスが縦長）ので、人物の見かけの大きさがアドレスと揃うよう
@@ -449,32 +524,32 @@ function setCharaTex(tex, h, cy){
 const FOLLOW_H = 1.721, FOLLOW_Y = 0.868;   // v0.11.8：10°回転でキャンバス 2836x2847 化、人物縦スパン 2020px で再較正
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=118", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_follow.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_follow.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=118", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=120", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -513,11 +588,12 @@ function onGreen(){ return distToCup() <= GREEN_R; }
 /* 地面の種類と、跳ね（bounce）・転がり（roll）の係数（2026-11-22 ユーザー指示：
    ボールは地面の種類によって跳ねたり転がったりする） */
 const SURF = {
-  green:   { bounce:0.9,  roll:1.15 },   // よく転がる
-  fairway: { bounce:1.0,  roll:1.0 },    // 標準
-  rough:   { bounce:0.5,  roll:0.45 },   // 跳ねが死に、草で止まる
-  sand:    { bounce:0.15, roll:0.10 }    // ほぼ跳ねず、めり込んで止まる
+  green:   { bounce:0.9,  roll:1.15, lie:1.0 },    // よく転がる
+  fairway: { bounce:1.0,  roll:1.0,  lie:1.0 },    // 標準
+  rough:   { bounce:0.5,  roll:0.45, lie:0.9 },    // 跳ねが死に、草で止まる。次のショットも少し飛ばない
+  sand:    { bounce:0.15, roll:0.10, lie:0.55 }    // ほぼ跳ねず、めり込んで止まる。次のショットは大きく飛距離が落ちる
 };
+const LIE_LABEL = { fairway:"ライ：フェアウェイ", rough:"ライ：ラフ（飛距離×0.9）", sand:"ライ：砂（飛距離×0.55）", green:"ライ：グリーン", water:"ライ：―" };
 function surfaceAt(x, z){
   if (inLake(x, z)) return "water";
   if (Math.hypot(x - CUP.x, z - CUP.z) <= GREEN_R) return "green";
@@ -635,11 +711,52 @@ function renderSettings(){
   chipRow(document.getElementById("viewChips"), VIEW_PRESETS.map(p => ({ id:p.id, label:p.label })), settings.view, id => { settings.view = id; saveSettings(); renderSettings(); snapCam = true; });
   document.getElementById("sndOn").checked = settings.sound;
   document.getElementById("sndOff").checked = !settings.sound;
+  // コース選択（ready なコースだけ選べる）
+  const cc = document.getElementById("courseChips");
+  cc.innerHTML = "";
+  COURSES.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "chip" + (i === courseIdx ? " on" : "");
+    b.textContent = (i + 1) + ". " + c.name + (c.ready ? "" : "（準備中）");
+    if (!c.ready) b.disabled = true;
+    b.addEventListener("click", () => { loadCourse(i); settingsEl.style.display = "none"; });
+    cc.appendChild(b);
+  });
+}
+/* コース切り替え（v0.12 ではコース1のみ実装済み。景色の組み替えはコース追加時にここへ足す） */
+function loadCourse(i){
+  if (!COURSES[i] || !COURSES[i].ready) return;
+  courseIdx = i;
+  HOLE_LEN = COURSES[i].len; PAR = COURSES[i].par;
+  CUP.set(0, 0, -HOLE_LEN);
+  document.getElementById("holeName").textContent = "HOLE " + (i + 1) + " ・ " + COURSES[i].name;
+  document.getElementById("parNum").textContent = PAR;
+  document.getElementById("result").style.display = "none";
+  ball.position.set(0, BALL_R, 0);
+  strokes = 0; strokesEl.textContent = 0;
+  state = "aim"; aimOffset = 0; knob.style.transform = "translate(0px,0)";
+  selectClub(0); placeChar(); marker.visible = true; updateArrow(); snapCam = true;
 }
 document.getElementById("setBtn").addEventListener("click", () => { renderSettings(); settingsEl.style.display = "flex"; });
 document.getElementById("setClose").addEventListener("click", () => { settingsEl.style.display = "none"; });
 document.getElementById("sndOn").addEventListener("change", () => { settings.sound = true; saveSettings(); soundApply(); });
 document.getElementById("sndOff").addEventListener("change", () => { settings.sound = false; saveSettings(); soundApply(); });
+/* ギブアップボタン：2回タップで確定（誤タップ防止） */
+let giveUpArm = false, giveUpTimer = 0;
+document.getElementById("giveUpBtn").addEventListener("click", () => {
+  const btn = document.getElementById("giveUpBtn");
+  if (!giveUpArm){
+    giveUpArm = true;
+    btn.textContent = "本当にギブアップする（ペナルティ+10）";
+    clearTimeout(giveUpTimer);
+    giveUpTimer = setTimeout(() => { giveUpArm = false; btn.textContent = "このホールをギブアップ（+10）"; }, 3000);
+    return;
+  }
+  clearTimeout(giveUpTimer); giveUpArm = false;
+  btn.textContent = "このホールをギブアップ（+10）";
+  settingsEl.style.display = "none";
+  giveUp();
+});
 document.getElementById("setReset").addEventListener("click", () => {
   settingsEl.style.display = "none";
   document.getElementById("result").style.display = "none";
@@ -1036,7 +1153,9 @@ function fire(p){
     state = "roll";
     rollSoundStart(surfaceAt(ball.position.x, ball.position.z), 0.5);   // パットの転がり音（小さめ）
   } else {
-    const D = c.dist * mult;
+    // ライ係数：止まった地面が悪いと次のショットは飛ばない（2026-11-22 仕様 §11）。コースの空気係数もここで効く
+    const lieF = ((SURF[surfaceAt(ball.position.x, ball.position.z)] || SURF.fairway).lie || 1) * (COURSES[courseIdx].air || 1);
+    const D = c.dist * mult * lieF;
     const carry = D * c.carry;
     shot.carryDist = carry;
     shot.rollDist = D - carry;
@@ -1061,13 +1180,46 @@ function fire(p){
     }
   }
 }
+/* 立体物への当たり判定（飛行中）：水平方向に反射し、エネルギーを落とす */
+function knockSound(){
+  if (!settings.sound) return;
+  const ac = audio(); if (!ac) return;
+  const t = ac.currentTime;
+  const src = noiseSrc(ac); const f = ac.createBiquadFilter();
+  f.type = "bandpass"; f.frequency.value = 850; f.Q.value = 1.1;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  src.connect(f); f.connect(g); g.connect(soundBus(ac));
+  src.start(t); src.stop(t + 0.1);
+}
+function collideFly(){
+  const bp = ball.position;
+  for (const c of colliders){
+    if (bp.y > groundH(c.x, c.z) + c.h) continue;
+    const dx = bp.x - c.x, dz = bp.z - c.z;
+    const rr = c.r + BALL_R, d2 = dx * dx + dz * dz;
+    if (d2 >= rr * rr || d2 === 0) continue;
+    const d = Math.sqrt(d2), nx = dx / d, nz = dz / d;
+    bp.x = c.x + nx * rr; bp.z = c.z + nz * rr;
+    const vn = shot.vel.x * nx + shot.vel.z * nz;
+    if (vn < 0){
+      shot.vel.x -= 2 * vn * nx; shot.vel.z -= 2 * vn * nz;
+      shot.vel.x *= 0.55; shot.vel.z *= 0.55; shot.vel.y *= 0.8;
+      knockSound();
+    }
+  }
+}
 function startRoll(){
-  ball.position.y = BALL_R;
+  ball.position.y = groundH(ball.position.x, ball.position.z) + BALL_R;
   if (inLake(ball.position.x, ball.position.z)) return water();
   // 着地点の地面で跳ね・転がりが変わる（2026-11-22 ユーザー指示）
   shot.surf = surfaceAt(ball.position.x, ball.position.z);
   const sf = SURF[shot.surf] || SURF.fairway;
   shot.rollDist *= sf.roll;
+  // 傾斜：打ち上げでは転がりが短く、打ち降ろしでは長くなる
+  const AH = 6;
+  const slope = (groundH(ball.position.x + shot.dir.x * AH, ball.position.z + shot.dir.z * AH) - groundH(ball.position.x, ball.position.z)) / AH;
+  shot.rollDist *= Math.min(1.6, Math.max(0.3, 1 - slope * 5));
   shot.hopH = Math.min(1.6, Math.abs(shot.impactVy || 0) * 0.055) * sf.bounce;
   shot.rollT = 0;
   shot.hopIdx = 0;
@@ -1080,7 +1232,7 @@ function startRoll(){
 }
 function finishShot(){
   rollSoundStop(); flyWindStop();
-  ball.position.y = BALL_R;
+  ball.position.y = groundH(ball.position.x, ball.position.z) + BALL_R;
   if (distToCup() < 0.2) return holed();   // カップイン判定（見た目0.11より少し甘め）
   state = "aim";
   aimOffset = 0; knob.style.transform = "translate(0px,0)";
@@ -1092,7 +1244,7 @@ function water(){
   splashSound();
   strokes++; strokesEl.textContent = strokes;
   showMsg("池ポチャ… 1罰で前の位置から打ち直し", 2400);
-  ball.position.copy(prevBallPos); ball.position.y = BALL_R;
+  ball.position.copy(prevBallPos); ball.position.y = groundH(ball.position.x, ball.position.z) + BALL_R;
   state = "aim";
   aimOffset = 0; knob.style.transform = "translate(0px,0)";
   placeChar(); marker.visible = true;
@@ -1104,10 +1256,23 @@ function holed(){
   ball.position.set(CUP.x, 0.04, CUP.z);
   rollSoundStop();
   cupSound();
+  totalScore += strokes;
   const d = strokes - PAR;
   const label = d <= -2 ? "イーグル！" : d === -1 ? "バーディー！" : d === 0 ? "パー" : d === 1 ? "ボギー" : "+" + d;
   document.getElementById("resultTitle").textContent = "カップイン！ " + label;
-  document.getElementById("resultDetail").textContent = "HOLE 1（Par " + PAR + "）を " + strokes + " 打でクリア";
+  document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打でクリア。合計 " + totalScore + " 打";
+  document.getElementById("result").style.display = "flex";
+}
+/* ギブアップ：打数＋ペナルティ10でホールアウト（2026-11-22 ユーザー決定、設定画面から実行） */
+function giveUp(){
+  if (state === "fly" || state === "roll" || state === "done") return;
+  const total = strokes + 10;
+  totalScore += total;
+  state = "done";
+  marker.visible = false;
+  if (arrow) arrow.visible = false;
+  document.getElementById("resultTitle").textContent = "ギブアップ（+10）";
+  document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打＋ペナルティ10 ＝ " + total + " 打で記録。合計 " + totalScore + " 打";
   document.getElementById("result").style.display = "flex";
 }
 document.getElementById("againBtn").addEventListener("click", () => {
@@ -1132,7 +1297,9 @@ function placeChar(){
     toBall.normalize();
     chara.position.addScaledVector(toBall, 0.25);
   }
-  charShadow.position.set(chara.position.x, 0.03, chara.position.z);
+  chara.position.y = groundH(chara.position.x, chara.position.z) + 0.70;   // 地形の高さに立つ
+  charShadow.position.set(chara.position.x, groundH(chara.position.x, chara.position.z) + 0.03, chara.position.z);
+  document.getElementById("lie").textContent = LIE_LABEL[surfaceAt(ball.position.x, ball.position.z)] || "";
 }
 function suggestClub(){
   if (onGreen()) return selectClub(13);
@@ -1182,10 +1349,11 @@ function animate(){
     ball.position.addScaledVector(shot.vel, dtF);
     if (ball.position.y > shot.apexY) shot.apexY = ball.position.y;
     flyWindUpdate(shot.vel.length());
-    if (ball.position.y < BALL_R) ball.position.y = BALL_R;
+    collideFly();   // 木・岩・建物などに当たれば跳ね返る
+    const gy = groundH(ball.position.x, ball.position.z) + BALL_R;
     const dx = ball.position.x - shot.origin.x, dz = ball.position.z - shot.origin.z;
     const traveled = Math.hypot(dx, dz);
-    if (traveled >= shot.carryDist || (ball.position.y <= BALL_R && shot.vel.y < 0)){ shot.impactVy = shot.vel.y; startRoll(); }
+    if (traveled >= shot.carryDist || (ball.position.y <= gy && shot.vel.y < 0)){ shot.impactVy = shot.vel.y; ball.position.y = gy; startRoll(); }
   } else if (state === "roll" && shot){
     shot.t += dt;
     shot.rollT = (shot.rollT || 0) + dt;
@@ -1195,17 +1363,25 @@ function animate(){
     if (shot.rollV <= 0){ shot.rollV = 0; finishShot(); }
     else {
       ball.position.addScaledVector(shot.dir, shot.rollV * dt);
-      // 着地直後の跳ね：地面の硬さ（hopH）に応じて、減衰しながら3回ほど弾む
-      if (shot.putt) ball.position.y = BALL_R;
-      else if (shot.hopH > 0.02 && shot.rollT < 0.9){
-        const ph = shot.rollT / 0.9;
-        ball.position.y = BALL_R + shot.hopH * Math.abs(Math.sin(ph * Math.PI * 3)) * (1 - ph);
-        const hi = Math.floor(ph * 3);
-        if (hi > (shot.hopIdx || 0)){ shot.hopIdx = hi; landSound(shot.surf, Math.max(0.12, (1 - ph) * 0.55)); }   // 跳ねの着地ごとに小さく
-      } else ball.position.y = BALL_R;
-      const d = distToCup();
-      if (d < 0.2 && shot.rollV < 8) holed();
-      else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
+      // 転がり中に木の幹や岩に当たったら、そこで止まる
+      for (const c of colliders){
+        const dx = ball.position.x - c.x, dz = ball.position.z - c.z, rr = c.gr + BALL_R;
+        if (dx * dx + dz * dz < rr * rr){ shot.rollV = 0; knockSound(); finishShot(); break; }
+      }
+      if (state === "roll"){
+        // 着地直後の跳ね：地面の硬さ（hopH）に応じて、減衰しながら3回ほど弾む
+        const gy = groundH(ball.position.x, ball.position.z) + BALL_R;
+        if (shot.putt) ball.position.y = gy;
+        else if (shot.hopH > 0.02 && shot.rollT < 0.9){
+          const ph = shot.rollT / 0.9;
+          ball.position.y = gy + shot.hopH * Math.abs(Math.sin(ph * Math.PI * 3)) * (1 - ph);
+          const hi = Math.floor(ph * 3);
+          if (hi > (shot.hopIdx || 0)){ shot.hopIdx = hi; landSound(shot.surf, Math.max(0.12, (1 - ph) * 0.55)); }   // 跳ねの着地ごとに小さく
+        } else ball.position.y = gy;
+        const d = distToCup();
+        if (d < 0.2 && shot.rollV < 8) holed();
+        else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
+      }
     }
   }
   // 発射後のポーズ進行：インパクト（0.05秒保持）→ フォロースルー（0.28秒）→ フィニッシュ（余韻、保持）
@@ -1342,7 +1518,14 @@ window.__golf = {
   press: () => pressStart(),
   release: () => releaseShot(),
   fireAt: p => { if (state === "aim"){ pressStart(); needlePos = p; releaseShot(); } },
-  place: (x, z) => { if (state === "aim"){ ball.position.set(x, BALL_R, z); placeChar(); updateArrow(); snapCam = true; } }
+  place: (x, z) => { if (state === "aim"){ ball.position.set(x, groundH(x, z) + BALL_R, z); placeChar(); updateArrow(); snapCam = true; } },
+  gh: (x, z) => groundH(x, z),
+  nColliders: () => colliders.length,
+  colliderList: () => colliders.map(c => ({ x: c.x, z: c.z, r: c.r, gr: c.gr, h: c.h })),
+  course: () => courseIdx,
+  total: () => totalScore,
+  giveUp: () => giveUp(),
+  loadCourse: i => loadCourse(i)
 };
 </script>
 </body>
