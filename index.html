@@ -125,14 +125,17 @@ const LAKE = { x0:30, x1:98, z0:-272, z1:-118 };   // 右側の湖
 const GRAV = 13, ROLL_A = 65, PUTT_A = 12;
 
 /* ============ 状態 ============ */
-let state = "aim";           // aim | hold | fly | roll | done
+let state = "aim";           // aim | hold | swing | fly | roll | done
 let clubIdx = 0;
 let strokes = 0;
 let aimOffset = 0;           // ラジアン（スティック）
 let lockedAim = 0;
 let holdStart = 0, needlePos = 0.5;
 let shot = null;             // 飛行中データ
-let backShown = false;       // hold 中に振りかぶり絵へ切り替え済みか
+let holdStage = 0;           // hold 中のポーズ段階（0=アドレス 1=テークバック 2=トップ）
+let seqScale = 1;            // スイングシーケンスの時間倍率（パターは 0.6、pressStart で確定）
+let swingT = 0, swingP = 0.5;   // swing 状態の経過秒と、離した瞬間に確定したゲージ位置
+let swingStage = 0;          // 発射後のポーズ段階（1=インパクト 2=フォロースルー 3=フィニッシュ）
 let prevBallPos = new THREE.Vector3(0, 0, 0);
 let msgTimer = null;
 
@@ -312,9 +315,11 @@ const charTex = (function(){
 const chara = new THREE.Sprite(new THREE.SpriteMaterial({ map:charTex, transparent:true }));
 chara.scale.set(0.93, 1.395, 1); scene.add(chara);   // キャラ表示は従来の1.5倍（2026-11-21 ユーザー指示）
 /* キャラ絵の差し替え管理：表示高さ 1.395m を維持し、幅は各絵の縦横比で再計算する。
-   スイング絵（swing_address.png／swing_back.png／swing_follow.png）が読めなければ、その間は立ち絵のまま（フォールバック）。 */
+   スイング絵（アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）が
+   読めなければ、その間は立ち絵のまま（フォールバック）。 */
 const CHAR_H = 1.395;
-let texStand = charTex, texAddress = null, texBack = null, texFollow = null;
+let texStand = charTex, texAddress = null, texTakeback = null, texBack = null,
+    texDown = null, texImpact = null, texFollow = null, texFinish = null;
 function setCharaTex(tex){
   if (!tex) return;
   chara.material.map = tex;
@@ -328,16 +333,28 @@ new THREE.TextureLoader().load("golfer.png", (tex) => {
   texStand = tex;
   if (state === "aim") setCharaTex(texStand);
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
-// スイング絵（アドレス／振りかぶり／フォロースルー）
+// スイング絵（7段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フォロースルー／フィニッシュ）
 new THREE.TextureLoader().load("swing_address.png", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
+new THREE.TextureLoader().load("swing_takeback.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texTakeback = tex;
+}, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
 new THREE.TextureLoader().load("swing_back.png", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
-}, undefined, () => { /* 読み込み失敗：振りかぶりは立ち絵のまま */ });
+}, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
+new THREE.TextureLoader().load("swing_down.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texDown = tex;
+}, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
+new THREE.TextureLoader().load("swing_impact.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texImpact = tex;
+}, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
 new THREE.TextureLoader().load("swing_follow.png", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFollow = tex;
 }, undefined, () => { /* 読み込み失敗：フォロースルーは立ち絵のまま */ });
+new THREE.TextureLoader().load("swing_finish.png", (tex) => {
+  tex.magFilter = THREE.NearestFilter; texFinish = tex;
+}, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
 // 方向ガイド矢印
 let arrow = null;
@@ -499,7 +516,8 @@ function pressStart(){
   if (arrow) arrow.visible = true;
   // 押した瞬間：アドレス絵（右向き・ボールに正対した構え）に切り替え、クラブがボールに届いて見えるようボール側へ少し寄せる
   setCharaTex(texAddress);   // 読めていなければ立ち絵のまま
-  backShown = false;
+  holdStage = 0;
+  seqScale = (CLUBS[clubIdx].name === "PT") ? 0.6 : 1;   // パターはスイングシーケンス全体を時間×0.6で短縮
   const toBall = new THREE.Vector3(ball.position.x - chara.position.x, 0, ball.position.z - chara.position.z);
   if (toBall.lengthSq() > 0.0001){
     toBall.normalize();
@@ -508,8 +526,16 @@ function pressStart(){
   }
 }
 function releaseShot(){
-  // 離した瞬間がインパクト：遅延なしで即発射し、絵はフォロースルーへ（fire 内で差し替え）
-  if (state === "hold") fire(needlePos);
+  // 離した瞬間にゲージ結果は確定。ここからは "swing" 状態で
+  // ダウンスイング（0.07秒）→インパクト（その瞬間に fire）→フォロースルー→フィニッシュと進む。
+  if (state !== "hold") return;
+  state = "swing";
+  swingT = 0;
+  swingP = needlePos;
+  swingStage = 0;
+  needle.style.display = "none";
+  shotBtn.classList.remove("hold");
+  setCharaTex(texDown);   // ダウンスイング絵
 }
 shotBtn.addEventListener("pointerdown", e => { e.preventDefault(); pressStart(); });
 shotBtn.addEventListener("pointerup", e => { e.preventDefault(); releaseShot(); });
@@ -537,8 +563,10 @@ function fire(p){
   showMsg(best ? "ベストショット！" : (dN > 0.66 ? "大きく外れた…" : "少し外れた"), 1800);
   trailReset(); glow.visible = true; marker.visible = false;
   if (arrow) arrow.visible = false;
-  setCharaTex(texFollow);   // フォロースルー絵に差し替え、キャラは表示したまま（飛行が進んだら t>1.2 で隠す）
-  shot = { dir, t:0, putt:isPutt, vel:null, rollV:0, rollDist:0, origin:ball.position.clone() };
+  // キャラ絵はスイングシーケンス側（animate）で管理する。ここでは発射時点のポーズ＝インパクトのまま。
+  // camDelay：発射後この秒数まではスイング視点を保持し、キャラも表示したままにする（フィニッシュの余韻）。
+  const sS = isPutt ? 0.6 : 1;
+  shot = { dir, t:0, putt:isPutt, vel:null, rollV:0, rollDist:0, origin:ball.position.clone(), seqS:sS, camDelay:0.83 * sS };
   if (isPutt){
     const D = Math.min(distToCup(), 60) * mult;
     shot.rollDist = D;
@@ -631,8 +659,19 @@ function animate(){
     const ph = el % 2;
     needlePos = ph < 1 ? ph : 2 - ph;
     needle.style.left = (needlePos * 100) + "%";
-    // 押してから約0.15秒で振りかぶり絵に切り替え、そのまま保持（離した瞬間にインパクト）
-    if (!backShown && (now - holdStart) / 1000 >= 0.15){ setCharaTex(texBack); backShown = true; }
+    // 押している間：アドレス（押した瞬間）→ +0.18秒 テークバック → +0.42秒 トップで保持
+    const held = (now - holdStart) / 1000;
+    if (holdStage === 0 && held >= 0.18 * seqScale){ setCharaTex(texTakeback); holdStage = 1; }
+    else if (holdStage === 1 && held >= 0.42 * seqScale){ setCharaTex(texBack); holdStage = 2; }
+  }
+  // スイング（離した後〜インパクト）：ダウンスイング絵で 0.07秒 → インパクト絵に切り替えた瞬間に発射
+  if (state === "swing"){
+    swingT += dt;
+    if (swingT >= 0.07 * seqScale){
+      setCharaTex(texImpact);   // インパクト絵
+      swingStage = 1;
+      fire(swingP);             // ここで state が fly / roll へ遷移し、shot.t が 0 から進み始める
+    }
   }
   // 物理
   if (state === "fly" && shot){
@@ -658,8 +697,14 @@ function animate(){
       else if (!shot.putt && inLake(ball.position.x, ball.position.z)) water();
     }
   }
-  // フォロースルー表示は、飛行が進んだら（t>1.2）従来どおりキャラと影を隠す
-  if (shot && (state === "fly" || state === "roll") && shot.t > 1.2 && chara.visible){
+  // 発射後のポーズ進行：インパクト（0.05秒保持）→ フォロースルー（0.28秒）→ フィニッシュ（余韻、保持）
+  if (shot && (state === "fly" || state === "roll")){
+    const s = shot.seqS;
+    if (swingStage === 1 && shot.t >= 0.05 * s){ setCharaTex(texFollow); swingStage = 2; }
+    else if (swingStage === 2 && shot.t >= 0.33 * s){ setCharaTex(texFinish); swingStage = 3; }
+  }
+  // キャラと影は、フィニッシュ終了＝カメラ移行の開始時点（発射後 camDelay）で隠す
+  if (shot && (state === "fly" || state === "roll") && shot.t >= shot.camDelay && chara.visible){
     chara.visible = false; charShadow.visible = false;
   }
   // ボール影・マーカー
@@ -674,7 +719,7 @@ function animate(){
   marker.scale.set(pulse, pulse, 1);
   // カメラ
   let camPos, camLook;
-  if (state === "aim" || state === "hold"){
+  if (state === "aim" || state === "hold" || state === "swing"){
     const dir = aimVector(aimOffset);
     camPos = new THREE.Vector3(ball.position.x - dir.x * 6.5, 3.1, ball.position.z - dir.z * 6.5);
     camLook = new THREE.Vector3(ball.position.x + dir.x * 11, 0.5, ball.position.z + dir.z * 11);
@@ -682,26 +727,35 @@ function animate(){
     else camera.position.lerp(camPos, 0.22);
     lookCur.lerp(camLook, 0.35);
   } else if ((state === "fly" || state === "roll") && shot){
-    if (shot.putt){
-      camPos = new THREE.Vector3(ball.position.x - shot.dir.x * 6, 3.0, ball.position.z - shot.dir.z * 6);
-      camLook = new THREE.Vector3(ball.position.x + shot.dir.x * 6, 0.3, ball.position.z + shot.dir.z * 6);
+    const d = shot.dir;
+    if (shot.t < shot.camDelay){
+      // フィニッシュの余韻が終わるまではスイング視点を保持：発射位置（origin）基準の aim カメラで、キャラと発射点を見る
+      camPos = new THREE.Vector3(shot.origin.x - d.x * 6.5, 3.1, shot.origin.z - d.z * 6.5);
+      camLook = new THREE.Vector3(shot.origin.x + d.x * 11, 0.5, shot.origin.z + d.z * 11);
+      camera.position.lerp(camPos, 0.22);
+      lookCur.lerp(camLook, 0.35);
+    } else if (shot.putt){
+      camPos = new THREE.Vector3(ball.position.x - d.x * 6, 3.0, ball.position.z - d.z * 6);
+      camLook = new THREE.Vector3(ball.position.x + d.x * 6, 0.3, ball.position.z + d.z * 6);
       camera.position.lerp(camPos, 0.25); lookCur.lerp(camLook, 0.3);
     } else {
-      // サイド・クォータービューでボールを追い続ける：打球直後の後方視点から 0.6秒かけて所定オフセットへ滑らかに移行
-      const k = quarterK(shot.t);
-      const d = shot.dir;
-      // 開始オフセット＝aim 視点の続き（後方 6.5m・高さ約3.1m）／目標＝横（進行方向に垂直）10m ＋ 後方 7m ＋ 高さ 5m
+      // サイドバッククォーターでボールを追い続ける：スイング視点から 0.6秒かけて所定オフセットへ滑らかに移行
+      const k = quarterK(shot.t - shot.camDelay);
+      // 目標オフセット＝横（進行方向に垂直）10m ＋ 後方 7m ＋ 高さ 5m。移行中は基準点を発射位置→ボールへブレンドし、跳びを防ぐ
       const ox = (-d.x * 6.5) * (1 - k) + ( d.z * 10 - d.x * 7) * k;
       const oy = (3.0) * (1 - k) + 5 * k;
       const oz = (-d.z * 6.5) * (1 - k) + (-d.x * 10 - d.z * 7) * k;
-      camPos = new THREE.Vector3(ball.position.x + ox, ball.position.y + oy, ball.position.z + oz);
-      camera.position.copy(camPos);   // 位置は ball.position + offset で直接決める（lerp の重ね掛けで遅れない）
+      const ax = shot.origin.x + (ball.position.x - shot.origin.x) * k;
+      const ay = shot.origin.y + (ball.position.y - shot.origin.y) * k;
+      const az = shot.origin.z + (ball.position.z - shot.origin.z) * k;
+      camPos = new THREE.Vector3(ax + ox, ay + oy, az + oz);
+      camera.position.copy(camPos);   // 位置は anchor + offset で直接決める（lerp の重ね掛けで遅れない）
       camLook = new THREE.Vector3(ball.position.x + d.x * 6, ball.position.y, ball.position.z + d.z * 6);
       lookCur.lerp(camLook, 0.35);   // 視点は緩やかに追随
     }
   }
   camera.lookAt(lookCur);
-  if (state === "aim" || state === "hold") remainEl.textContent = Math.round(distToCup());
+  if (state === "aim" || state === "hold" || state === "swing") remainEl.textContent = Math.round(distToCup());
   renderer.render(scene, camera);
 }
 placeChar();
