@@ -72,6 +72,9 @@
   #settings h2 { font-size:18px; color:#14532d; margin-bottom:6px; }
   #settings h3 { font-size:13px; color:#33475b; margin:16px 0 7px; border-bottom:1px solid #dde5dd; padding-bottom:4px; }
   #settings .note { font-size:11px; color:#7a8a7a; margin-top:4px; }
+  #legendList .lrow { font-size:12px; padding:6px 8px; border:1px solid #d8e2d8; border-radius:8px; margin:4px 0; background:#f6faf6; }
+  #legendList .lrow .nm { font-weight:800; }
+  #legendList .lrow .st { color:#7a8a7a; font-size:11px; margin:2px 0 4px; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; }
   .chip { padding:6px 10px; font-size:13px; border-radius:15px; border:1.5px solid #b9c9b9; background:#f2f6f2; color:#44554a; cursor:pointer; }
   .chip.on { background:#2e9e57; border-color:#2e9e57; color:#fff; font-weight:700; }
@@ -166,7 +169,10 @@
   <h2>設定</h2>
   <h3>クラブセット（バッグに入れるクラブ）</h3>
   <div class="chips" id="bagChips"></div>
-  <div class="note">クエストで入手したクラブもここで入れ替えられます（試作では全14本を所持）。PT は常に入っています。</div>
+  <div class="note">通常クラブは全19本を所持しています。PT は常に入っています。</div>
+  <h3>伝説のクラブ</h3>
+  <div id="legendList"></div>
+  <div class="note">条件を満たすと入手でき、自動でバッグに入ります。</div>
   <h3>ショット後のカメラ演出</h3>
   <div class="chips" id="camChips"></div>
   <div class="note">「ランダム」はショットごとに抽選します。短いショットでは一部パターンをクォーターに読み替えます。</div>
@@ -211,7 +217,7 @@
 /* ============ 版チェック（ブラウザキャッシュで古いページが残る問題への対策） ============
    サーバー上の version.txt とこのページの版が違えば、新しいURLで開き直して最新版を取りに行く。
    公開のたびに PAGE_VER と version.txt を一緒に上げること。 */
-const PAGE_VER = "0.28.0";
+const PAGE_VER = "0.29.0";
 (function(){
   try {
     fetch("version.txt", { cache: "no-store" }).then(r => r.text()).then(v => {
@@ -228,6 +234,10 @@ const CLUBS = [
   { name:"3W", dist:210, angle:14, carry:0.86, gauge:0.95, best:9  },
   { name:"5W", dist:195, angle:16, carry:0.86, gauge:1.00, best:10 },
   { name:"UT", dist:180, angle:18, carry:0.87, gauge:1.00, best:10 },
+  { name:"4UT", dist:168, angle:20, carry:0.88, gauge:1.00, best:12 },
+  { name:"5UT", dist:158, angle:22, carry:0.89, gauge:1.02, best:12 },
+  { name:"6UT", dist:148, angle:24, carry:0.90, gauge:1.05, best:13 },
+  { name:"3I", dist:180, angle:19, carry:0.87, gauge:1.02, best:10 },
   { name:"4I", dist:170, angle:20, carry:0.88, gauge:1.05, best:11 },
   { name:"5I", dist:160, angle:22, carry:0.89, gauge:1.08, best:11 },
   { name:"6I", dist:150, angle:24, carry:0.90, gauge:1.10, best:12 },
@@ -237,8 +247,17 @@ const CLUBS = [
   { name:"PW", dist:105, angle:36, carry:0.95, gauge:1.20, best:16 },
   { name:"AW", dist: 90, angle:40, carry:0.96, gauge:1.20, best:17 },
   { name:"SW", dist: 70, angle:45, carry:0.97, gauge:1.25, best:18 },
+  { name:"LW", dist: 55, angle:52, carry:0.98, gauge:1.25, best:19 },
+  // 伝説のクラブ（2026-11-23 ユーザー指示）：条件を満たすと入手でき、自動でバッグに入る
+  { name:"パーシモン", full:"パーシモンドライバー", legend:"persimmon", dist:248, angle:11, carry:0.84, gauge:0.80, best:4 },
+  { name:"Burner", full:"TaylorMade Burner", legend:"burner", dist:242, angle:12, carry:0.86, gauge:0.88, best:8 },
+  { name:"Big Bertha", full:"Callaway Big Bertha", legend:"bertha", dist:236, angle:13, carry:0.85, gauge:0.95, best:14 },
+  { name:"975D", full:"Titleist 975D", legend:"d975", dist:244, angle:12, carry:0.87, gauge:0.90, best:10 },
+  { name:"Eye2", full:"PING Eye2 アイアン", legend:"eye2", dist:148, angle:25, carry:0.90, gauge:1.12, best:19 },
   { name:"PT", dist:  0, angle: 0, carry:0.00, gauge:1.30, best:20 }
 ];
+const PT_IDX = CLUBS.length - 1;
+const OLD14 = ["1W","3W","5W","UT","4I","5I","6I","7I","8I","9I","PW","AW","SW","PT"];   // v0.28までの並び（バッグ保存の移行用）
 /* コース一覧（2026-11-22 仕様 v3.0 §11：全18コース。1〜9はユーザー決定、10〜18は nono 提案をユーザーが採用）
    ready:true のコースだけ遊べる。基盤（起伏・当たり判定・ライ係数）はコース共通。 */
 const COURSES = [
@@ -758,7 +777,7 @@ function buildGround(def){
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x9fd08a }));
   courseGroup.add(mesh);
-  new THREE.TextureLoader().load(def.tex + "?v=280", (tex) => {
+  new THREE.TextureLoader().load(def.tex + "?v=290", (tex) => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(def.repX, def.repY);
     tex.magFilter = THREE.NearestFilter;
@@ -814,7 +833,7 @@ function buildGreenMesh(){
   const m = new THREE.Mesh(geo, mat);
   courseGroup.add(m);
   if (!greenTexObj){
-    new THREE.TextureLoader().load("tex/gtex_green.png?v=280", (tex) => {
+    new THREE.TextureLoader().load("tex/gtex_green.png?v=290", (tex) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.magFilter = THREE.NearestFilter;
       greenTexObj = tex; mat.map = tex; mat.needsUpdate = true;
@@ -833,7 +852,7 @@ function buildGreenCup(){
   const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 0.334),
     new THREE.MeshBasicMaterial({ color:0xe53935, side:THREE.DoubleSide, transparent:true }));
   flag.position.set(CUP.x + 0.34, gy + 1.23, CUP.z); courseGroup.add(flag);
-  new THREE.TextureLoader().load("flag.png?v=280", (tex) => {
+  new THREE.TextureLoader().load("flag.png?v=290", (tex) => {
     flag.material.map = tex; flag.material.color.set(0xffffff);
     flag.material.needsUpdate = true;
   }, undefined, () => { /* 読み込み失敗：赤旗を維持 */ });
@@ -1409,7 +1428,7 @@ function buildBackdrop(def){
   courseGroup.add(mesh);
   const key = def.bg;
   if (bgTexCache[key]){ mat.map = bgTexCache[key]; mat.opacity = 1; mat.needsUpdate = true; }
-  else new THREE.TextureLoader().load("bg/" + key + ".jpg?v=280", (tex) => {
+  else new THREE.TextureLoader().load("bg/" + key + ".jpg?v=290", (tex) => {
     tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(5, 1);
     bgTexCache[key] = tex; mat.map = tex; mat.opacity = 1; mat.needsUpdate = true;
   });
@@ -1477,29 +1496,29 @@ function setCharaTex(tex, h, cy){
    フォロー絵は 2026-11-23 に不使用が確定したため、読み込み自体をやめた（ファイルは残す）。 */
 const FINISH_H = 1.340, FINISH_Y = 0.689;   // 人物割合 1990/2184 → 同上
 // ゴルファー絵（golfer.png：英国紳士風 nono）が読めたら差し替える。失敗時は上の簡易スプライトのまま（フォールバック）。
-new THREE.TextureLoader().load("golfer.png?v=280", (tex) => {
+new THREE.TextureLoader().load("golfer.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter;   // ドット絵をくっきり表示
   texStand = tex;
   if (state === "aim" && !texAddress) setCharaTex(texStand);   // アドレス絵が既にあればそちらを優先（打つ前の構え）
 }, undefined, () => { /* 読み込み失敗：簡易スプライトを維持 */ });
 // スイング絵（6段階：アドレス／テークバック／トップ／ダウンスイング／インパクト／フィニッシュ）
-new THREE.TextureLoader().load("swing_address.png?v=280", (tex) => {
+new THREE.TextureLoader().load("swing_address.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter; texAddress = tex;
   if (state === "aim") setCharaTex(texAddress);   // 打つ前はアドレス絵で打つ方向を向く
 }, undefined, () => { /* 読み込み失敗：アドレスは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_takeback.png?v=280", (tex) => {
+new THREE.TextureLoader().load("swing_takeback.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter; texTakeback = tex;
 }, undefined, () => { /* 読み込み失敗：テークバックは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_back.png?v=280", (tex) => {
+new THREE.TextureLoader().load("swing_back.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter; texBack = tex;
 }, undefined, () => { /* 読み込み失敗：トップは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_down.png?v=280", (tex) => {
+new THREE.TextureLoader().load("swing_down.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter; texDown = tex;
 }, undefined, () => { /* 読み込み失敗：ダウンスイングは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_impact.png?v=280", (tex) => {
+new THREE.TextureLoader().load("swing_impact.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter; texImpact = tex;
 }, undefined, () => { /* 読み込み失敗：インパクトは立ち絵のまま */ });
-new THREE.TextureLoader().load("swing_finish.png?v=280", (tex) => {
+new THREE.TextureLoader().load("swing_finish.png?v=290", (tex) => {
   tex.magFilter = THREE.NearestFilter; texFinish = tex;
 }, undefined, () => { /* 読み込み失敗：フィニッシュは立ち絵のまま */ });
 const charShadow = blobShadow(0.6, 0.42);
@@ -1563,12 +1582,19 @@ const VIEW_PRESETS = [
   { id:"low",  label:"低い", d:5.5, h:1.7 },
   { id:"high", label:"高い", d:8.0, h:5.2 }
 ];
-let settings = { bag: CLUBS.map((c, i) => i), cam: "random", view: "std", sound: true, seen: 0, spin: 0 };
+let settings = { bag: CLUBS.map((c, i) => i).filter(i => !CLUBS[i].legend), cam: "random", view: "std", sound: true, seen: 0, spin: 0, bagVer: 2 };
 try {
   const s = JSON.parse(localStorage.getItem("fg_settings_v1") || "null");
   if (s){
-    if (Array.isArray(s.bag) && s.bag.length) settings.bag = s.bag.filter(i => i >= 0 && i < CLUBS.length);
-    if (!settings.bag.includes(13)) settings.bag.push(13);
+    if (Array.isArray(s.bag) && s.bag.length){
+      if (s.bagVer !== 2){
+        // 旧14本時代のバッグは「名前」で新インデックスへ移行する（伝説は含まない）
+        settings.bag = s.bag.map(oi => CLUBS.findIndex(c => c.name === OLD14[oi])).filter(i => i >= 0 && !CLUBS[i].legend);
+      } else {
+        settings.bag = s.bag.filter(i => i >= 0 && i < CLUBS.length);
+      }
+    }
+    if (!settings.bag.includes(PT_IDX)) settings.bag.push(PT_IDX);
     settings.bag.sort((a, b) => a - b);
     if (CAM_PATTERNS.some(p => p.id === s.cam)) settings.cam = s.cam;
     if (VIEW_PRESETS.some(p => p.id === s.view)) settings.view = s.view;
@@ -1583,6 +1609,41 @@ function markSeen(i){
   if (i > settings.seen){ settings.seen = i; saveSettings(); }
 }
 function saveSettings(){ try { localStorage.setItem("fg_settings_v1", JSON.stringify(settings)); } catch(e) {} }
+/* ============ 記録と伝説のクラブの入手条件（2026-11-23 ユーザー指示、条件は少し厳し目） ============ */
+const PAR_TOTAL = COURSES.reduce((a, c) => a + c.par, 0);
+let records = { best:{}, bestShots:0, birdiePlus:0, maxShot:0, unlocked:[] };
+try {
+  const r = JSON.parse(localStorage.getItem("fg_records_v1") || "null");
+  if (r){
+    if (r.best && typeof r.best === "object") records.best = r.best;
+    for (const k of ["bestShots", "birdiePlus", "maxShot"]) if (typeof r[k] === "number") records[k] = r[k];
+    if (Array.isArray(r.unlocked)) records.unlocked = r.unlocked;
+  }
+} catch(e) { /* 保存が読めなければ初期値 */ }
+function saveRecords(){ try { localStorage.setItem("fg_records_v1", JSON.stringify(records)); } catch(e) {} }
+function holedCourses(){ return Object.keys(records.best).length; }
+function bestTotal(){ return Object.values(records.best).reduce((a, b) => a + b, 0); }
+function parOrBetter(){ return COURSES.filter((c, i) => records.best[i] !== undefined && records.best[i] <= c.par).length; }
+function legendClubIdx(id){ return CLUBS.findIndex(c => c.legend === id); }
+const LEGENDS = [
+  { id:"burner",    cond:"1ショットの総飛距離 280m 以上を記録", prog:() => "最大飛距離 " + Math.floor(records.maxShot) + " m / 280 m", ok:() => records.maxShot >= 280 },
+  { id:"bertha",    cond:"ベストショット（パット除く）通算 100 回", prog:() => records.bestShots + " 回 / 100 回", ok:() => records.bestShots >= 100 },
+  { id:"eye2",      cond:"バーディー以上 通算 30 回", prog:() => records.birdiePlus + " 回 / 30 回", ok:() => records.birdiePlus >= 30 },
+  { id:"d975",      cond:"全18コース制覇＋ベストスコア合計 " + (PAR_TOTAL + 5) + " 以下", prog:() => "制覇 " + holedCourses() + "/18 ・ ベスト合計 " + (holedCourses() === 18 ? bestTotal() : "―"), ok:() => holedCourses() === 18 && bestTotal() <= PAR_TOTAL + 5 },
+  { id:"persimmon", cond:"全18コースのベストスコアがすべてパー以下", prog:() => "パー以下クリア " + parOrBetter() + "/18", ok:() => parOrBetter() === 18 },
+];
+function checkUnlocks(){
+  const got = [];
+  for (const L of LEGENDS){
+    if (records.unlocked.includes(L.id) || !L.ok()) continue;
+    records.unlocked.push(L.id);
+    const ci = legendClubIdx(L.id);
+    if (ci >= 0 && !settings.bag.includes(ci)){ settings.bag.push(ci); settings.bag.sort((a, b) => a - b); saveSettings(); renderClubList(); }
+    got.push(CLUBS[ci].full || CLUBS[ci].name);
+  }
+  if (got.length) saveRecords();
+  return got;
+}
 function viewPreset(){ return VIEW_PRESETS.find(p => p.id === settings.view) || VIEW_PRESETS[0]; }
 
 /* ============ UI ============ */
@@ -1695,16 +1756,17 @@ function renderSettings(){
   const bagEl = document.getElementById("bagChips");
   bagEl.innerHTML = "";
   CLUBS.forEach((c, i) => {
+    if (c.legend) return;   // 伝説のクラブは下の専用欄で管理
     const b = document.createElement("button");
     const on = settings.bag.includes(i);
-    b.className = "chip" + (on ? " on" : "") + (i === 13 ? " lock" : "");
+    b.className = "chip" + (on ? " on" : "") + (i === PT_IDX ? " lock" : "");
     b.textContent = c.name + (c.dist ? " " + c.dist + "m" : "");
     b.addEventListener("click", () => {
-      if (i === 13) return;   // PT は常駐
+      if (i === PT_IDX) return;   // PT は常駐
       if (on){
-        if (settings.bag.filter(x => x !== 13).length <= 1) return;   // 通常クラブは最低1本
+        if (settings.bag.filter(x => x !== PT_IDX).length <= 1) return;   // 通常クラブは最低1本
         settings.bag = settings.bag.filter(x => x !== i);
-        if (clubIdx === i) selectClub(settings.bag.find(x => x !== 13));
+        if (clubIdx === i) selectClub(settings.bag.find(x => x !== PT_IDX));
       } else {
         settings.bag.push(i); settings.bag.sort((a, b2) => a - b2);
       }
@@ -1712,6 +1774,7 @@ function renderSettings(){
     });
     bagEl.appendChild(b);
   });
+  renderLegend();
   chipRow(document.getElementById("camChips"), CAM_PATTERNS, settings.cam, id => { settings.cam = id; saveSettings(); renderSettings(); });
   chipRow(document.getElementById("viewChips"), VIEW_PRESETS.map(p => ({ id:p.id, label:p.label })), settings.view, id => { settings.view = id; saveSettings(); renderSettings(); snapCam = true; });
   document.getElementById("sndOn").checked = settings.sound;
@@ -1728,6 +1791,38 @@ function renderSettings(){
     b.addEventListener("click", () => { loadCourse(i); settingsEl.style.display = "none"; });
     cc.appendChild(b);
   });
+}
+/* 伝説のクラブ欄：未入手は条件と進捗、入手済みはバッグの出し入れ */
+function renderLegend(){
+  const el = document.getElementById("legendList");
+  el.innerHTML = "";
+  for (const L of LEGENDS){
+    const ci = legendClubIdx(L.id), c = CLUBS[ci];
+    const row = document.createElement("div");
+    row.className = "lrow";
+    const un = records.unlocked.includes(L.id);
+    if (un){
+      row.innerHTML = "<span class='nm'>" + (c.full || c.name) + "</span> " + c.dist + "m / ベスト " + c.best + "%<div class='st'>入手済み</div>";
+      const b = document.createElement("button");
+      const inBag = settings.bag.includes(ci);
+      b.className = "chip" + (inBag ? " on" : "");
+      b.textContent = inBag ? "バッグに入っている" : "バッグに入れる";
+      b.addEventListener("click", () => {
+        if (inBag){
+          if (settings.bag.filter(x => x !== PT_IDX).length <= 1) return;
+          settings.bag = settings.bag.filter(x => x !== ci);
+          if (clubIdx === ci) selectClub(settings.bag.find(x => x !== PT_IDX));
+        } else {
+          settings.bag.push(ci); settings.bag.sort((a, b2) => a - b2);
+        }
+        saveSettings(); renderClubList(); renderSettings();
+      });
+      row.appendChild(b);
+    } else {
+      row.innerHTML = "<span class='nm'>" + (c.full || c.name) + "</span> " + c.dist + "m / ベスト " + c.best + "%<div class='st'>🔒 条件：" + L.cond + "<br>進捗：" + L.prog() + "</div>";
+    }
+    el.appendChild(row);
+  }
 }
 /* オープニング：コースをぐるりと一周する全景カメラ（タップでスキップ可） */
 let intro = null;
@@ -2272,6 +2367,11 @@ function fire(p){
   const isPutt = c.name === "PT";
   hitSound(best, isPutt);
   showMsg(best ? "ベストショット！" : (dN > 0.66 ? "大きく外れた…" : "少し外れた"), 1800);
+  if (best && !isPutt){   // 伝説のクラブの記録：ベストショット回数
+    records.bestShots++; saveRecords();
+    const got = checkUnlocks();
+    if (got.length) showMsg("伝説のクラブ『" + got.join("』『") + "』を入手！ バッグに追加されました", 4500);
+  }
   marker.visible = false;
   if (arrow) arrow.visible = false;
   // キャラ絵はスイングシーケンス側（animate）で管理する。ここでは発射時点のポーズ＝インパクトのまま。
@@ -2393,6 +2493,14 @@ function startRoll(){
   state = "roll";
 }
 function finishShot(){
+  if (shot && !shot.putt && shot.origin){   // 伝説のクラブの記録：1ショットの総飛距離
+    const tr = Math.hypot(ball.position.x - shot.origin.x, ball.position.z - shot.origin.z);
+    if (tr > records.maxShot){
+      records.maxShot = tr; saveRecords();
+      const got = checkUnlocks();
+      if (got.length) showMsg("伝説のクラブ『" + got.join("』『") + "』を入手！ バッグに追加されました", 4500);
+    }
+  }
   rollSoundStop(); flyWindStop();
   ball.position.y = groundH(ball.position.x, ball.position.z) + BALL_R;
   if (distToCup() < 0.2) return holed();   // カップイン判定（見た目0.11より少し甘め）
@@ -2419,10 +2527,15 @@ function holed(){
   rollSoundStop();
   cupSound();
   totalScore += strokes;
+  // 伝説のクラブの記録：コースベストとバーディー以上を数え、条件を満たせば入手
+  if (records.best[courseIdx] === undefined || strokes < records.best[courseIdx]) records.best[courseIdx] = strokes;
+  if (strokes <= PAR - 1) records.birdiePlus++;
+  saveRecords();
+  const gotLegend = checkUnlocks();
   const d = strokes - PAR;
   const label = d <= -2 ? "イーグル！" : d === -1 ? "バーディー！" : d === 0 ? "パー" : d === 1 ? "ボギー" : "+" + d;
   document.getElementById("resultTitle").textContent = "カップイン！ " + label;
-  document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打でクリア。合計 " + totalScore + " 打" + (courseIdx === COURSES.length - 1 ? "　全コース制覇！" : "");
+  document.getElementById("resultDetail").textContent = "HOLE " + (courseIdx + 1) + "（Par " + PAR + "）を " + strokes + " 打でクリア。合計 " + totalScore + " 打" + (courseIdx === COURSES.length - 1 ? "　全コース制覇！" : "") + (gotLegend.length ? "　伝説のクラブ『" + gotLegend.join("』『") + "』を入手！" : "");
   document.getElementById("nextBtn").style.display = courseIdx < COURSES.length - 1 ? "" : "none";
   document.getElementById("result").style.display = "flex";
 }
@@ -2471,13 +2584,16 @@ function placeChar(){
   document.getElementById("lie").textContent = LIE_LABEL[surfaceAt(ball.position.x, ball.position.z)] || "";
 }
 function suggestClub(){
-  if (onGreen()) return selectClub(13);
+  if (onGreen()) return selectClub(PT_IDX);
   const need = distToCup();
-  // バッグ内のクラブから「足りる中で最小」を選ぶ。足りるものがなければ最長
-  const bag = settings.bag.filter(i => i !== 13);
-  let pick = bag[0];
-  for (const i of bag) if (CLUBS[i].dist >= need) pick = i;
-  selectClub(pick);
+  // バッグ内のクラブから「足りる中で最小飛距離」を選ぶ。足りるものがなければ最長
+  const bag = settings.bag.filter(i => i !== PT_IDX);
+  let pick = null, pickD = Infinity, longest = bag[0];
+  for (const i of bag){
+    if (CLUBS[i].dist > CLUBS[longest].dist) longest = i;
+    if (CLUBS[i].dist >= need && CLUBS[i].dist < pickD){ pick = i; pickD = CLUBS[i].dist; }
+  }
+  selectClub(pick !== null ? pick : longest);
 }
 
 /* ============ メインループ ============ */
@@ -2733,6 +2849,7 @@ window.__golf = {
   occFaded: () => occluders.filter(u => u.goal < 1).length,
   wx: () => weather && { kind: weather.kind, spd: Math.round(weather.spd * 10) / 10, wx: Math.round(weather.wx * 10) / 10, wz: Math.round(weather.wz * 10) / 10, fogFar: Math.round(scene.fog.far) },
   setWx: (kind) => { rollWeather(kind); applyWeather(); updateBestZone(); renderWxPill(); },
+  rec: () => ({ bestShots: records.bestShots, birdiePlus: records.birdiePlus, maxShot: Math.round(records.maxShot), unlocked: records.unlocked.slice(), best: Object.assign({}, records.best), bag: settings.bag.slice(), nClubs: CLUBS.length }),
   surf: (x, z) => surfaceAt(x, z),
   snd: () => ({ ac: AC ? AC.state : "none", bgm: bgm.on, step: bgm.step, wind: !!windN, fly: !!flyN, roll: !!rollN }),
   shotSurf: () => shot ? (shot.surf || null) : null,
